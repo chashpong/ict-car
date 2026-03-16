@@ -107,10 +107,33 @@ export function useAuth() {
 
 // Role-based permission helper
 const ROLE_MENU_ACCESS = {
-  admin: ["/", "/vehicles", "/bookings", "/approvals", "/logbook", "/maintenance", "/reports"],
-  approver: ["/", "/bookings", "/approvals", "/reports"],
-  driver: ["/", "/logbook"],
-  user: ["/", "/bookings"],
+  admin: [
+    "/",
+    "/vehicles",
+    "/drivers",
+    "/bookings",
+    "/approvals",
+    "/logbook",
+    "/maintenance",
+    "/reports"
+  ],
+
+  approver: [
+    "/",
+    "/bookings",
+    "/approvals",
+    "/reports"
+  ],
+
+  driver: [
+    "/",
+    "/logbook"
+  ],
+
+  user: [
+    "/",
+    "/bookings"
+  ],
 }
 
 export function canAccessRoute(role, route) {

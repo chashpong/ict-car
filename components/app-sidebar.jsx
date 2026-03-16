@@ -10,6 +10,7 @@ import {
   BookOpen,
   Wrench,
   BarChart3,
+  Users,
   LogOut,
   Shield,
   ChevronUp,
@@ -41,6 +42,7 @@ import { useAuth, canAccessRoute, getRoleLabel, getRoleBadgeColor } from "@/lib/
 const mainNav = [
   { title: "แดชบอร์ด", href: "/", icon: LayoutDashboard },
   { title: "จัดการยานพาหนะ", href: "/vehicles", icon: Car },
+  { title: "คนขับรถ", href: "/drivers", icon: Users },
   { title: "การจองรถ", href: "/bookings", icon: CalendarCheck },
   { title: "อนุมัติคำขอ", href: "/approvals", icon: ClipboardCheck },
 ]
