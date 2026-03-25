@@ -157,136 +157,106 @@ onClick={()=>startTrip(booking)}
 function TripRecordForm({ booking }){
 
 const [isStarted,setIsStarted] = useState(false)
-
-const [startMileage,setStartMileage] = useState("")
-const [endMileage,setEndMileage] = useState("")
-
-const [fuelLiters,setFuelLiters] = useState("")
-const [fuelCost,setFuelCost] = useState("")
-
-const [distance,setDistance] = useState(0)
-
+const [days,setDays] = useState([])
+const [loading,setLoading] = useState(false)
 const [mileageImage,setMileageImage] = useState(null)
-const [receiptImage,setReceiptImage] = useState(null)
 
-const [logbookId,setLogbookId] = useState(null)
-
-
-
-async function uploadImage(file){
-
-if(!file) return null
-
-const fileName = Date.now()+"-"+file.name
-
-const {data,error} = await supabase.storage
-.from("logbook-images")
-.upload(fileName,file)
-
-if(error){
-console.log(error)
-return null
-}
-
-const {data:publicUrl} = supabase.storage
-.from("logbook-images")
-.getPublicUrl(fileName)
-
-return publicUrl.publicUrl
-}
-
-
-
+// ================= START =================
 async function startTrip(){
 
-const mileageUrl = await uploadImage(mileageImage)
+if(!booking) return
 
-const {data,error} = await supabase
-.from("logbooks")
-.insert({
+setLoading(true)
 
+const start = new Date(booking.start_date)
+
+// รองรับไม่มี end_date
+const end = booking.end_date
+  ? new Date(booking.end_date)
+  : new Date(booking.start_date)
+
+let current = new Date(start)
+let temp = []
+
+while(current <= end){
+
+temp.push({
+date: current.toISOString().slice(0,10),
+start_mileage:"",
+end_mileage:"",
+fuel_liter:"",
+fuel_cost:"",
+note:""
+})
+
+current.setDate(current.getDate()+1)
+}
+
+setDays(temp)
+setIsStarted(true)
+
+await supabase
+.from("bookings")
+.update({ status:"started" })
+.eq("id",booking.id)
+
+setLoading(false)
+}
+
+
+// ================= FINISH =================
+async function finishTrip(){
+
+setLoading(true)
+
+const inserts = days.map(d=>{
+
+const distance = Number(d.end_mileage) - Number(d.start_mileage)
+
+return {
 booking_id: booking.id,
 vehicle_id: booking.vehicle_id,
 driver_id: booking.driver_id,
 
-start_mileage: startMileage,
-mileage_image: mileageUrl,
-status:"started"
+start_mileage:d.start_mileage,
+end_mileage:d.end_mileage,
+distance:distance,
 
-})
-.select()
-.single()
+fuel_liter:d.fuel_liter || 0,
+fuel_cost:d.fuel_cost || 0,
 
-if(error){
-console.log(error)
-alert("เกิดข้อผิดพลาด")
-return
+note:d.note || null,
+status:"completed",
+
+created_at:new Date(d.date).toISOString()
 }
 
-await supabase
-.from("bookings")
-.update({
-status:"started"
 })
-.eq("id",booking.id)
-
-setLogbookId(data.id)
-
-setIsStarted(true)
-
-}
-
-
-
-async function finishTrip(){
-
-const receiptUrl = await uploadImage(receiptImage)
-
-const distanceCalc = Number(endMileage) - Number(startMileage)
-
-setDistance(distanceCalc)
 
 const {error} = await supabase
 .from("logbooks")
-.update({
-
-end_mileage:endMileage,
-distance:distanceCalc,
-
-fuel_liter:fuelLiters,
-fuel_cost:fuelCost,
-
-receipt_image:receiptUrl,
-
-status:"completed",
-end_time:new Date()
-
-})
-.eq("id",logbookId)
+.insert(inserts)
 
 if(error){
 console.log(error)
 alert("บันทึกไม่สำเร็จ")
+setLoading(false)
 return
 }
 
 await supabase
 .from("bookings")
-.update({
-status:"completed"
-})
+.update({ status:"completed" })
 .eq("id",booking.id)
 
-alert("จบการเดินทางเรียบร้อย")
+alert("บันทึกครบทุกวันแล้ว")
 
-setIsStarted(false)
-
+setLoading(false)
 window.location.reload()
-
 }
 
 
-
+// ================= UI =================
 return(
 
 <div className="flex flex-col gap-4">
@@ -295,142 +265,115 @@ return(
 บันทึกการเดินทาง
 </h2>
 
-
 <Card>
-
 <CardContent className="flex flex-col gap-4 pt-6">
 
+{/* BEFORE START */}
 {!isStarted && (
 
 <>
-
-<div className="grid grid-cols-2 gap-4">
-
 <div>
-
-<Label>รถ</Label>
-
-<Input
-value={booking?.vehicles?.license_plate || ""}
-disabled
-/>
-
+<Label>รูปเลขไมล์เริ่ม</Label>
+<Input type="file" onChange={(e)=>setMileageImage(e.target.files[0])}/>
 </div>
 
-
-<div>
-
-<Label>เลขไมล์เริ่มต้น</Label>
-
-<Input
-type="number"
-value={startMileage}
-onChange={(e)=>setStartMileage(e.target.value)}
-/>
-
-</div>
-
-</div>
-
-
-<div>
-
-<Label>รูปเลขไมล์</Label>
-
-<Input
-type="file"
-onChange={(e)=>setMileageImage(e.target.files[0])}
-/>
-
-</div>
-
-
-<Button onClick={startTrip}>
-
-<Play className="mr-2 size-4"/>
-
+<Button onClick={startTrip} disabled={loading}>
 เริ่มเดินทาง
-
 </Button>
-
 </>
 
 )}
 
 
-
+{/* AFTER START */}
 {isStarted && (
 
 <>
 
 <div className="p-3 rounded-lg bg-green-100">
-กำลังเดินทาง
+กรอกข้อมูลรายวัน
 </div>
 
+{days.map((d,index)=>{
 
-<Separator/>
+const distance =
+Number(d.end_mileage || 0) - Number(d.start_mileage || 0)
 
+return(
 
-<h4>เติมน้ำมัน</h4>
+<div key={index} className="border p-4 rounded-lg space-y-3">
 
-<div className="grid grid-cols-2 gap-4">
+<p className="font-medium">📅 {d.date}</p>
+
+<div className="grid grid-cols-2 gap-3">
 
 <Input
-placeholder="ลิตร"
-value={fuelLiters}
-onChange={(e)=>setFuelLiters(e.target.value)}
+placeholder="ไมล์เริ่ม"
+value={d.start_mileage}
+onChange={(e)=>{
+const newDays=[...days]
+newDays[index].start_mileage=e.target.value
+setDays(newDays)
+}}
 />
 
 <Input
-placeholder="จำนวนเงิน"
-value={fuelCost}
-onChange={(e)=>setFuelCost(e.target.value)}
+placeholder="ไมล์จบ"
+value={d.end_mileage}
+onChange={(e)=>{
+const newDays=[...days]
+newDays[index].end_mileage=e.target.value
+setDays(newDays)
+}}
+/>
+
+<Input
+placeholder="น้ำมัน (ลิตร)"
+value={d.fuel_liter}
+onChange={(e)=>{
+const newDays=[...days]
+newDays[index].fuel_liter=e.target.value
+setDays(newDays)
+}}
+/>
+
+<Input
+placeholder="ค่าน้ำมัน"
+value={d.fuel_cost}
+onChange={(e)=>{
+const newDays=[...days]
+newDays[index].fuel_cost=e.target.value
+setDays(newDays)
+}}
 />
 
 </div>
 
-
-<div>
-
-<Label>รูปใบเสร็จ</Label>
-
 <Input
-type="file"
-onChange={(e)=>setReceiptImage(e.target.files[0])}
+placeholder="หมายเหตุ (รถเสีย ฯลฯ)"
+value={d.note}
+onChange={(e)=>{
+const newDays=[...days]
+newDays[index].note=e.target.value
+setDays(newDays)
+}}
 />
+
+<p className="text-sm text-muted-foreground">
+ระยะทาง: {distance > 0 ? distance : 0} กม.
+</p>
 
 </div>
 
-
-<Separator/>
-
-
-<div className="grid grid-cols-2 gap-4">
-
-<Input
-placeholder="เลขไมล์ปลายทาง"
-value={endMileage}
-onChange={(e)=>setEndMileage(e.target.value)}
-/>
-
-<Input
-placeholder="ระยะทาง"
-value={distance}
-disabled
-/>
-
-</div>
-
+)
+})}
 
 <Button
 variant="destructive"
 onClick={finishTrip}
+disabled={loading}
 >
-
-<Square className="mr-2 size-4"/>
-
 จบการเดินทาง
-
 </Button>
 
 </>
@@ -438,14 +381,12 @@ onClick={finishTrip}
 )}
 
 </CardContent>
-
 </Card>
 
 </div>
 
 )
 }
-
 
 
 function LogbookTable({ logs }){
@@ -604,6 +545,7 @@ user_name,
 department,
 destination,
 start_date,
+end_date, 
 start_time,
 end_time,
 vehicle_id,
