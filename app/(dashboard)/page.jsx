@@ -2,7 +2,7 @@ import { supabase } from "@/lib/supabase"
 import { PageHeader } from "@/components/page-header"
 import { SummaryCards } from "@/components/dashboard/summary-cards"
 import { MonthlyUsageChart, FuelExpenseChart, VehicleUsageChart } from "@/components/dashboard/dashboard-charts"
-import { RecentActivity } from "@/components/dashboard/recent-activity"
+
 
 export default async function DashboardPage() {
 
@@ -48,9 +48,7 @@ export default async function DashboardPage() {
           <VehicleUsageChart />
         </div>
 
-        <div className="grid gap-6 lg:grid-cols-1">
-          <RecentActivity bookings={bookings || []} />
-        </div>
+        
       </div>
     </>
   )

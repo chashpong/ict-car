@@ -1,7 +1,18 @@
+@import url('https://fonts.googleapis.com/css2?family=Sarabun:wght@300;400;500;600;700&display=swap');
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
 @custom-variant dark (&:is(.dark *));
+
+* {
+  font-family: 'Sarabun', sans-serif !important;
+}
+
+.swal2-container {
+  z-index: 99999 !important;
+  pointer-events: auto !important;
+}
+/* ... โค้ดที่เหลือของคุณ ... */
 
 :root {
   --background: oklch(0.98 0.002 240);
@@ -83,8 +94,9 @@
 }
 
 @theme inline {
-  --font-sans: 'Geist', 'Geist Fallback';
-  --font-mono: 'Geist Mono', 'Geist Mono Fallback';
+  --font-sans: 'Sarabun', sans-serif;
+  --font-mono: 'Sarabun', sans-serif;
+  
   --color-background: var(--background);
   --color-foreground: var(--foreground);
   --color-card: var(--card);
@@ -133,5 +145,5 @@
   }
   body {
     @apply bg-background text-foreground;
-  }
-}
+    font-family: 'Sarabun', sans-serif;
+  } }

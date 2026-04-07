@@ -72,9 +72,14 @@ export function AppSidebar() {
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-3">
-          <div className="flex size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <Shield className="size-5" />
-          </div>
+         {/* เปลี่ยนจากไอคอน Shield เดิม เป็นแท็ก img นี้ครับ */}
+<div className="flex size-10 items-center justify-center rounded-lg">
+  <img 
+    src="/images/Thailand.png" 
+    alt="MOI Logo" 
+    className="size-20 object-contain" 
+  />
+</div>
           <div className="flex flex-col group-data-[collapsible=icon]:hidden">
             <span className="text-sm font-semibold leading-tight">ระบบยานพาหนะ</span>
             <span className="text-xs text-sidebar-foreground/60">Vehicle Management</span>
