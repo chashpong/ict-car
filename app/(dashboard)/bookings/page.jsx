@@ -95,15 +95,25 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
   );
 }
 
-function BookingForm({ onClose, onSave }) {
+// ✅ แก้ไขจุดที่ 1: เพิ่ม vehicles เข้าไปในวงเล็บ (รับ props)
+function BookingForm({ onClose, onSave, vehicles = [] }) { 
   const [formData, setFormData] = useState({
-    user_name: "", position: "", department: "", 
-    start_date: "", end_date: "", start_time: "00:00", end_time: "00:00", 
-    destination: "", duty_details: "", passengers: 1
+    user_name: "", 
+    position: "", 
+    department: "", 
+    start_date: "", 
+    end_date: "", 
+    start_time: "00:00", 
+    end_time: "00:00", 
+    destination: "", 
+    duty_details: "", 
+    passengers: 1, // ✅ แก้ไขจุดที่ 2: เพิ่มเครื่องหมายคอมมาตรงนี้
+    vehicle_id: "" 
   })
 
   return (
     <div className="flex flex-col gap-5 py-2 font-sarabun">
+      {/* ... ส่วนบนคงเดิม ... */}
       <div className="grid grid-cols-2 gap-6">
         <div className="space-y-2"><Label className="font-bold">ข้าพเจ้า (ผู้ขอใช้รถ) <span className="text-red-500">*</span></Label><Input value={formData.user_name} onChange={(e) => setFormData({ ...formData, user_name: e.target.value })} placeholder="ชื่อ-นามสกุล" /></div>
         <div className="space-y-2"><Label className="font-bold">ตำแหน่ง <span className="text-red-500">*</span></Label><Input value={formData.position} onChange={(e) => setFormData({ ...formData, position: e.target.value })} placeholder="ระบุตำแหน่ง" /></div>
@@ -123,9 +133,41 @@ function BookingForm({ onClose, onSave }) {
         <div className="space-y-2"><Label className="font-bold">วันที่สิ้นสุด <span className="text-red-500">*</span></Label><DatePickerThai dateValue={formData.end_date} onDateChange={(d) => setFormData({ ...formData, end_date: d })} placeholder="วว/ดด/ปปปป" /></div>
         <div className="space-y-2"><Label className="font-bold">เวลาสิ้นสุด <span className="text-red-500">*</span></Label><TimePickerClock value={formData.end_time} onChange={(v) => setFormData({ ...formData, end_time: v })} /></div>
       </div>
+
+      {/* ✅ ส่วนเลือกรถที่หายไปในโค้ดที่คุณส่งมาแต่มีใน Error */}
+      <div className="grid grid-cols-2 gap-6">
+        <div className="space-y-2">
+          <Label className="font-bold">เลือกรถยนต์ที่ต้องการ <span className="text-red-500">*</span></Label>
+          <Select 
+            onValueChange={(v) => setFormData({ ...formData, vehicle_id: v })}
+            value={formData.vehicle_id}
+          >
+            <SelectTrigger className="rounded-xl h-11 border-slate-200">
+              <SelectValue placeholder="ค้นหารถที่ว่าง..." />
+            </SelectTrigger>
+            <SelectContent className="font-sarabun text-black bg-white">
+              {vehicles.map((car) => (
+                <SelectItem key={car.id} value={car.id}>
+                  {car.license_plate} - {car.brand} {car.model}
+                </SelectItem>
+              ))}
+              {vehicles.length === 0 && (
+                <p className="text-sm p-2 text-center text-muted-foreground">ไม่มีรถว่างในขณะนี้</p>
+              )}
+            </SelectContent>
+          </Select>
+        </div>
+        
+        <div className="space-y-2">
+          <Label className="font-bold">มีผู้นั่งไปในครั้งนี้จำนวน (คน) <span className="text-red-500">*</span></Label>
+          <Input type="number" min={1} value={formData.passengers} onChange={(e) => setFormData({ ...formData, passengers: e.target.value })} className="h-11 rounded-xl" />
+        </div>
+      </div>
       
-      <div className="space-y-2"><Label className="font-bold">เพื่อปฏิบัติราชการเกี่ยวกับเรื่อง <span className="text-red-500">*</span></Label><Textarea rows={2} value={formData.duty_details} onChange={(e) => setFormData({ ...formData, duty_details: e.target.value })} placeholder="ระบุรายละเอียดภารกิจ" className="resize-none font-sarabun" /></div>
-      <div className="space-y-2 w-1/2 pr-3"><Label className="font-bold">มีผู้นั่งไปในครั้งนี้จำนวน (คน) <span className="text-red-500">*</span></Label><Input type="number" min={1} value={formData.passengers} onChange={(e) => setFormData({ ...formData, passengers: e.target.value })} /></div>
+      <div className="space-y-2">
+        <Label className="font-bold">เพื่อปฏิบัติราชการเกี่ยวกับเรื่อง <span className="text-red-500">*</span></Label>
+        <Textarea rows={2} value={formData.duty_details} onChange={(e) => setFormData({ ...formData, duty_details: e.target.value })} placeholder="ระบุรายละเอียดภารกิจ" className="resize-none font-sarabun" />
+      </div>
       
       <div className="flex justify-end gap-3 pt-4 border-t">
         <Button variant="outline" onClick={onClose} className="px-8 font-bold text-slate-600 hover:bg-slate-50 rounded-xl">ยกเลิก</Button>
@@ -188,6 +230,25 @@ export default function BookingsPage() {
     }
   }
 
+  // เพิ่ม State สำหรับเก็บรายการรถที่ว่าง
+const [availableVehicles, setAvailableVehicles] = useState([])
+
+// เพิ่มฟังก์ชันดึงข้อมูลรถใน useEffect หรือเรียกใน fetchBookings
+async function fetchAvailableVehicles() {
+  const { data, error } = await supabase
+    .from("vehicles")
+    .select("id, license_plate, brand, model")
+    .eq("status", "available") // ดึงเฉพาะรถที่ว่าง
+
+  if (!error) setAvailableVehicles(data || [])
+}
+
+useEffect(() => {
+  fetchBookings()
+  fetchAvailableVehicles() // ดึงรายการรถมาเตรียมไว้
+}, [])
+
+
   const triggerAlert = (type, title, description) => {
     Swal.fire({
       icon: type,
@@ -237,6 +298,12 @@ export default function BookingsPage() {
 
   async function saveBooking(data) {
     const now = new Date();
+    // ✅ เพิ่ม data.vehicle_id ในเงื่อนไขตรวจสอบ
+  if (!data.user_name || !data.position || !data.department || !data.start_date || !data.destination || !data.duty_details || !data.passengers || !data.vehicle_id) {
+    triggerAlert('error', 'ข้อมูลไม่ครบถ้วน', 'กรุณาระบุข้อมูลที่มีเครื่องหมาย (*) และเลือกรถยนต์ให้ครบถ้วน');
+    return;
+  }
+
     if (!data.user_name || !data.position || !data.department || !data.start_date || !data.destination || !data.duty_details || !data.passengers) {
       triggerAlert('error', 'ข้อมูลไม่ครบถ้วน', 'กรุณาระบุข้อมูลที่มีเครื่องหมาย (*) ให้ครบถ้วน');
       return;
@@ -293,7 +360,8 @@ export default function BookingsPage() {
                 <DialogTitle className="text-xl font-bold text-center tracking-wide font-sarabun">ใบขออนุญาตใช้รถส่วนกลาง (แบบ ๓)</DialogTitle>
               </DialogHeader>
               <div className="px-8 pb-4">
-                 <BookingForm onClose={() => setCreateOpen(false)} onSave={saveBooking} />
+                 <BookingForm onClose={() => setCreateOpen(false)}  onSave={saveBooking} vehicles={availableVehicles} 
+                  />
               </div>
             </DialogContent>
           </Dialog>
