@@ -1,7 +1,7 @@
 "use client"
 
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import {
   LayoutDashboard,
   Car,
@@ -12,7 +12,6 @@ import {
   BarChart3,
   Users,
   LogOut,
-  Shield,
   ChevronUp,
 } from "lucide-react"
 import {
@@ -56,7 +55,6 @@ const recordNav = [
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
   const { user, logout } = useAuth()
 
   const role = user?.role ?? "user"
@@ -64,26 +62,30 @@ export function AppSidebar() {
   const filteredMainNav = mainNav.filter((item) => canAccessRoute(role, item.href))
   const filteredRecordNav = recordNav.filter((item) => canAccessRoute(role, item.href))
 
-  function handleLogout() {
-    logout()
-    router.replace("/login")
+  async function handleLogout() {
+    try {
+      await logout();
+      window.location.href = "/login";
+    } catch (error) {
+      window.location.href = "/login";
+    }
   }
 
   return (
     <Sidebar collapsible="icon">
       <SidebarHeader className="p-4">
         <Link href="/" className="flex items-center gap-3">
-         {/* เปลี่ยนจากไอคอน Shield เดิม เป็นแท็ก img นี้ครับ */}
-<div className="flex size-10 items-center justify-center rounded-lg">
-  <img 
-    src="/images/Thailand.png" 
-    alt="MOI Logo" 
-    className="size-20 object-contain" 
-  />
-</div>
-          <div className="flex flex-col group-data-[collapsible=icon]:hidden">
+          <div className="flex size-10 items-center justify-center rounded-lg">
+            <img 
+              src="/images/Thailand.png" 
+              alt="MOI Logo" 
+              className="size-20 object-contain" 
+            />
+          </div>
+          {/* ✅ ปรับเป็น text-white เพื่อให้เห็นชื่อระบบชัดเจน */}
+          <div className="flex flex-col group-data-[collapsible=icon]:hidden text-white">
             <span className="text-sm font-semibold leading-tight">ระบบยานพาหนะ</span>
-            <span className="text-xs text-sidebar-foreground/60">Vehicle Management</span>
+            <span className="text-xs text-white/60">Vehicle Management</span>
           </div>
         </Link>
       </SidebarHeader>
@@ -91,7 +93,7 @@ export function AppSidebar() {
       <SidebarContent>
         {filteredMainNav.length > 0 && (
           <SidebarGroup>
-            <SidebarGroupLabel>เมนูหลัก</SidebarGroupLabel>
+            <SidebarGroupLabel className="text-white/50">เมนูหลัก</SidebarGroupLabel>
             <SidebarGroupContent>
               <SidebarMenu>
                 {filteredMainNav.map((item) => (
@@ -100,9 +102,10 @@ export function AppSidebar() {
                       asChild
                       isActive={pathname === item.href}
                       tooltip={item.title}
+                      className="text-white/80 hover:text-white hover:bg-white/10"
                     >
                       <Link href={item.href}>
-                        <item.icon />
+                        <item.icon className="text-white/70" />
                         <span>{item.title}</span>
                       </Link>
                     </SidebarMenuButton>
@@ -116,7 +119,7 @@ export function AppSidebar() {
           <>
             <SidebarSeparator />
             <SidebarGroup>
-              <SidebarGroupLabel>บันทึกและรายงาน</SidebarGroupLabel>
+              <SidebarGroupLabel className="text-white/50">บันทึกและรายงาน</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {filteredRecordNav.map((item) => (
@@ -125,9 +128,10 @@ export function AppSidebar() {
                         asChild
                         isActive={pathname === item.href}
                         tooltip={item.title}
+                        className="text-white/80 hover:text-white hover:bg-white/10"
                       >
                         <Link href={item.href}>
-                          <item.icon />
+                          <item.icon className="text-white/70" />
                           <span>{item.title}</span>
                         </Link>
                       </SidebarMenuButton>
@@ -144,23 +148,24 @@ export function AppSidebar() {
           <SidebarMenuItem>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <SidebarMenuButton tooltip={user?.name ?? "ผู้ใช้"} className="h-auto">
+                <SidebarMenuButton tooltip={user?.name ?? "ผู้ใช้"} className="h-auto hover:bg-white/10">
                   <Avatar className="size-7">
-                    <AvatarFallback className="bg-sidebar-primary text-sidebar-primary-foreground text-xs">
+                    <AvatarFallback className="bg-sidebar-primary text-white text-xs">
                       {user?.name?.[0] ?? "?"}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="flex flex-1 flex-col group-data-[collapsible=icon]:hidden">
-                    <span className="text-xs font-medium">{user?.name ?? "ไม่ทราบชื่อ"}</span>
-                    <span className="text-[10px] text-sidebar-foreground/60">
+                  {/* ✅ ปรับเป็น text-white เพื่อให้เห็นชื่อผู้ใช้ชัดเจน */}
+                  <div className="flex flex-1 flex-col group-data-[collapsible=icon]:hidden text-left">
+                    <span className="text-xs font-medium text-white">{user?.name ?? "ไม่ทราบชื่อ"}</span>
+                    <span className="text-[10px] text-white/50">
                       {getRoleLabel(role)}
                     </span>
                   </div>
-                  <ChevronUp className="ml-auto size-4 group-data-[collapsible=icon]:hidden" />
+                  <ChevronUp className="ml-auto size-4 group-data-[collapsible=icon]:hidden text-white/50" />
                 </SidebarMenuButton>
               </DropdownMenuTrigger>
-              <DropdownMenuContent side="top" align="start" className="w-56">
-                <DropdownMenuLabel className="font-normal">
+              <DropdownMenuContent side="top" align="start" className="w-56 bg-white">
+                <DropdownMenuLabel className="font-normal text-black">
                   <div className="flex flex-col gap-1">
                     <p className="text-sm font-medium">{user?.name}</p>
                     <p className="text-xs text-muted-foreground">{user?.email}</p>
@@ -176,7 +181,7 @@ export function AppSidebar() {
                   {user?.department}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
+                <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive cursor-pointer font-bold">
                   <LogOut className="mr-2 size-4" />
                   ออกจากระบบ
                 </DropdownMenuItem>
