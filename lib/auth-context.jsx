@@ -1,103 +1,138 @@
 "use client"
 
-import { createContext, useContext, useState, useCallback, useEffect } from "react"
+// 1. เพิ่ม useRef เข้ามา
+import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react"
+import { supabase } from "./supabase"
 
 const AuthContext = createContext(undefined)
-
-// Demo users for each role
-const DEMO_USERS = {
-  "admin@gov.go.th": {
-    password: "admin1234",
-    user: {
-      id: "u-admin",
-      name: "ทรง งามศรี",
-      email: "admin@gov.go.th",
-      role: "admin",
-      department: "ฝ่ายบริหารทั่วไป",
-    },
-  },
-  "approver@gov.go.th": {
-    password: "approve1234",
-    user: {
-      id: "u-approver",
-      name: "วิรัตน์ อนุมัติ",
-      email: "approver@gov.go.th",
-      role: "approver",
-      department: "ฝ่ายอำนวยการ",
-    },
-  },
-  "driver@gov.go.th": {
-    password: "driver1234",
-    user: {
-      id: "u-driver",
-      name: "ประสิทธิ์ ขับดี",
-      email: "driver@gov.go.th",
-      role: "driver",
-      department: "ฝ่ายยานพาหนะ",
-    },
-  },
-  "user@gov.go.th": {
-    password: "user1234",
-    user: {
-      id: "u-user",
-      name: "สมชาย ใจดี",
-      email: "user@gov.go.th",
-      role: "user",
-      department: "ฝ่ายบุคคล",
-    },
-  },
-}
-
 const SESSION_KEY = "vms_session"
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
+  
+  // 2. สร้าง Flag สำหรับป้องกันการเรียก fetch ข้อมูลซ้อนกัน
+  const fetching = useRef(false);
 
-  // Restore session on mount
-  useEffect(() => {
+  const fetchProfile = async (authUser) => {
+    // ถ้ากำลังดึงข้อมูลอยู่ (true) ให้ return ออกไปเลย ไม่ต้องทำซ้ำ
+    if (fetching.current) return;
+
     try {
-      const stored = sessionStorage.getItem(SESSION_KEY) || localStorage.getItem(SESSION_KEY)
-      if (stored) {
-        const parsed = JSON.parse(stored)
-        setUser(parsed)
+      fetching.current = true; // เริ่มการดึงข้อมูล ให้ตั้งเป็น true
+
+      const { data, error } = await supabase
+        .from("profiles")
+        .select("*")
+        .eq("id", authUser.id)
+        .maybeSingle();
+
+      if (error) throw error;
+
+      if (!data) {
+        console.warn("⚠️ ไม่พบข้อมูลโปรไฟล์ในตาราง profiles");
+        const guestData = {
+          id: authUser.id,
+          email: authUser.email,
+          name: "รอยืนยันสิทธิ์",
+          role: "user" 
+        };
+        setUser(guestData);
+        return guestData;
       }
-    } catch {
-      // ignore parse errors
+
+      const userData = {
+        id: authUser.id,
+        email: authUser.email,
+        name: data.full_name,
+        role: data.role,
+        department: data.department || "ไม่ระบุ"
+      };
+
+      setUser(userData);
+      localStorage.setItem(SESSION_KEY, JSON.stringify(userData));
+      return userData;
+
+    } catch (err) {
+      // ถ้า Error เกี่ยวกับ Lock (Race condition) ไม่ต้องพ่นออกมาที่ console ให้รก
+      if (!err.message.includes("lock")) {
+        console.error("Error fetching profile:", err.message);
+      }
+      return null;
+    } finally {
+      fetching.current = false; // ทำงานเสร็จแล้ว (ไม่ว่าจะสำเร็จหรือพัง) ให้ปลดล็อกเป็น false
+      setIsLoading(false);
     }
-    setIsLoading(false)
-  }, [])
+  };
 
-  const login = useCallback(async (email, password, remember) => {
-    // Simulate network delay
-    await new Promise((resolve) => setTimeout(resolve, 800))
+  useEffect(() => {
+    let mounted = true; // ใช้เช็คว่า component ยังอยู่บนหน้าจอไหม
 
-    const entry = DEMO_USERS[email.toLowerCase().trim()]
-    if (!entry || entry.password !== password) {
-      return { success: false, error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" }
+    const initAuth = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user && mounted) {
+        await fetchProfile(session.user);
+      } else {
+        setIsLoading(false);
+      }
+    };
+
+    initAuth();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      // เรียก fetchProfile เฉพาะเมื่อมีการ SIGNED_IN หรือ TOKEN_REFRESHED และมี user
+      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user && mounted) {
+        await fetchProfile(session.user);
+      } else if (event === 'SIGNED_OUT') {
+        setUser(null);
+        localStorage.removeItem(SESSION_KEY);
+        setIsLoading(false);
+      }
+    });
+
+    return () => {
+      mounted = false; // Cleanup เมื่อปิดหน้า
+      subscription.unsubscribe();
+    };
+  }, []);
+
+  const login = useCallback(async (email, password) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: email.toLowerCase().trim(),
+        password: password,
+      });
+
+      if (error) return { success: false, error: "อีเมลหรือรหัสผ่านไม่ถูกต้อง" };
+
+      const profile = await fetchProfile(data.user);
+      return { success: true, user: profile };
+    } catch (err) {
+      return { success: false, error: "เกิดข้อผิดพลาดในการเชื่อมต่อ" };
     }
+  }, []);
 
-    setUser(entry.user)
-    const serialized = JSON.stringify(entry.user)
-    if (remember) {
-      localStorage.setItem(SESSION_KEY, serialized)
-    }
-    sessionStorage.setItem(SESSION_KEY, serialized)
-    return { success: true }
-  }, [])
-
-  const logout = useCallback(() => {
-    setUser(null)
-    sessionStorage.removeItem(SESSION_KEY)
-    localStorage.removeItem(SESSION_KEY)
-  }, [])
+  const logout = useCallback(async () => {
+    await supabase.auth.signOut();
+    setUser(null);
+    localStorage.removeItem(SESSION_KEY);
+    sessionStorage.removeItem(SESSION_KEY);
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, isAuthenticated: !!user, isLoading, login, logout }}>
+    <AuthContext.Provider value={{ 
+      user, 
+      isAuthenticated: !!user, 
+      isLoading, 
+      login, 
+      logout 
+    }}>
       {children}
     </AuthContext.Provider>
   )
 }
+
+// ... ส่วนที่เหลือ (useAuth, canAccessRoute, ฯลฯ) คงเดิม ...
 
 export function useAuth() {
   const context = useContext(AuthContext)
@@ -105,38 +140,15 @@ export function useAuth() {
   return context
 }
 
-// Role-based permission helper
 const ROLE_MENU_ACCESS = {
-  admin: [
-    "/",
-    "/vehicles",
-    "/drivers",
-    "/bookings",
-    "/approvals",
-    "/logbook",
-    "/maintenance",
-    "/reports"
-  ],
-
-  approver: [
-    "/",
-    "/bookings",
-    "/approvals",
-    "/reports"
-  ],
-
-  driver: [
-    "/",
-    "/logbook"
-  ],
-
-  user: [
-    "/",
-    "/bookings"
-  ],
+  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/logbook", "/maintenance", "/reports"],
+  approver: ["/", "/bookings", "/approvals", "/reports"],
+  driver: ["/", "/logbook"],
+  user: ["/", "/bookings"],
 }
 
 export function canAccessRoute(role, route) {
+  if (!role) return false
   return ROLE_MENU_ACCESS[role]?.includes(route) ?? false
 }
 
@@ -151,15 +163,15 @@ export function getRoleLabel(role) {
     driver: "พนักงานขับรถ",
     user: "ผู้ใช้ทั่วไป",
   }
-  return labels[role]
+  return labels[role] || "ไม่ระบุสิทธิ์"
 }
 
 export function getRoleBadgeColor(role) {
   const colors = {
-    admin: "bg-primary/15 text-primary",
-    approver: "bg-chart-3/15 text-chart-3",
-    driver: "bg-chart-2/15 text-chart-2",
-    user: "bg-muted-foreground/15 text-muted-foreground",
+    admin: "bg-red-100 text-red-700 border-red-200",
+    approver: "bg-purple-100 text-purple-700 border-purple-200",
+    driver: "bg-amber-100 text-amber-700 border-amber-200",
+    user: "bg-blue-100 text-blue-700 border-blue-200",
   }
-  return colors[role]
+  return colors[role] || "bg-gray-100 text-gray-700"
 }

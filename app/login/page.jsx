@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 // 🎨 ✨ ส่วนที่แก้ไขได้ง่าย: เปลี่ยนรูปภาพและโลโก้ตรงนี้
 const ASSETS = {
   // ภาพพื้นหลังเต็มจอ (ดึงจากโฟลเดอร์ public/images/)
-  bgImage: "/images/hello.jpg", 
+  bgImage: "/images/image.png", 
   // ภาพโลโก้ตรากระทรวง
   logoImage: "/images/Thailand.png",
 }

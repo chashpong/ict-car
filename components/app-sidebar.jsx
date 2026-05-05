@@ -42,6 +42,7 @@ import { useAuth, canAccessRoute, getRoleLabel, getRoleBadgeColor } from "@/lib/
 const mainNav = [
   { title: "แดชบอร์ด", href: "/", icon: LayoutDashboard },
   { title: "จัดการยานพาหนะ", href: "/vehicles", icon: Car },
+  { title: "จัดการสมาชิก", href: "/users", icon: Users }, 
   { title: "คนขับรถ", href: "/drivers", icon: Users },
   { title: "การจองรถ", href: "/bookings", icon: CalendarCheck },
   { title: "อนุมัติคำขอ", href: "/approvals", icon: ClipboardCheck },
