@@ -12,7 +12,6 @@
   z-index: 99999 !important;
   pointer-events: auto !important;
 }
-/* ... โค้ดที่เหลือของคุณ ... */
 
 :root {
   --background: oklch(0.98 0.002 240);
@@ -146,4 +145,5 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Sarabun', sans-serif;
-  } }
+  }
+}

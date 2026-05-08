@@ -18,55 +18,60 @@ export function SummaryCards({ vehicles = [], maintenanceRecords = [], logEntrie
       value: totalVehicles,
       unit: "คัน",
       icon: Car,
-      color: "bg-primary/10 text-primary",
+      color: "text-blue-600",
+      bgColor: "bg-blue-100",
     },
     {
       title: "รถว่าง",
       value: availableVehicles,
       unit: "คัน",
       icon: CheckCircle2,
-      color: "bg-success/10 text-success",
+      color: "text-emerald-600",
+      bgColor: "bg-emerald-100",
     },
     {
       title: "กำลังใช้งาน",
       value: inUseVehicles,
       unit: "คัน",
       icon: AlertCircle,
-      color: "bg-warning/10 text-warning",
+      color: "text-amber-600",
+      bgColor: "bg-amber-100",
     },
     {
       title: "ค่าน้ำมันเดือนนี้",
-      value: monthlyFuelCost.toLocaleString(),
+      value: monthlyFuelCost.toLocaleString('th-TH'),
       unit: "บาท",
       icon: Fuel,
-      color: "bg-chart-2/10 text-chart-2",
+      color: "text-rose-600",
+      bgColor: "bg-rose-100",
     },
     {
       title: "รอซ่อมบำรุง",
       value: maintenanceVehicles,
       unit: "คัน",
       icon: Wrench,
-      color: "bg-destructive/10 text-destructive",
+      color: "text-purple-600",
+      bgColor: "bg-purple-100",
     },
   ]
 
   return (
     <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
       {cards.map((card) => (
-        <Card key={card.title} className="gap-0 py-4">
-          <CardContent className="px-4 pb-0">
+        <Card key={card.title} className="rounded-2xl border-slate-200 shadow-sm hover:shadow-md transition-shadow duration-300">
+          <CardContent className="p-5">
             <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">{card.title}</p>
-                <p className="mt-1 text-2xl font-bold text-foreground">
+              <div className="space-y-2">
+                <p className="text-[13px] font-semibold text-slate-500">{card.title}</p>
+                <p className="text-3xl font-extrabold text-slate-800 tracking-tight">
                   {card.value}
-                  <span className="ml-1 text-sm font-normal text-muted-foreground">
+                  <span className="ml-1.5 text-sm font-medium text-slate-500">
                     {card.unit}
                   </span>
                 </p>
               </div>
-              <div className={`flex size-10 items-center justify-center rounded-lg ${card.color}`}>
-                <card.icon className="size-5" />
+              <div className={`flex size-12 items-center justify-center rounded-xl ${card.bgColor} ${card.color}`}>
+                <card.icon className="size-6" />
               </div>
             </div>
           </CardContent>

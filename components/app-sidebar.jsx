@@ -7,6 +7,7 @@ import {
   Car,
   CalendarCheck,
   ClipboardCheck,
+  History, // ✅ นำเข้า Icon สำหรับหน้าประวัติ
   BookOpen,
   Wrench,
   BarChart3,
@@ -38,13 +39,17 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { useAuth, canAccessRoute, getRoleLabel, getRoleBadgeColor } from "@/lib/auth-context"
 
+// ✅ จัดหมวดหมู่ใหม่เรียงตามลำดับการใช้งานจริง
 const mainNav = [
   { title: "แดชบอร์ด", href: "/", icon: LayoutDashboard },
+  // กลุ่มงานประจำวัน
+  { title: "การจองรถ", href: "/bookings", icon: CalendarCheck },
+  { title: "อนุมัติคำขอ", href: "/approvals", icon: ClipboardCheck },
+  { title: "ประวัติการอนุมัติ", href: "/history", icon: History }, // ✅ เพิ่มเมนูใหม่ตรงนี้
+  // กลุ่มจัดการข้อมูล
   { title: "จัดการยานพาหนะ", href: "/vehicles", icon: Car },
   { title: "จัดการสมาชิก", href: "/users", icon: Users }, 
   { title: "คนขับรถ", href: "/drivers", icon: Users },
-  { title: "การจองรถ", href: "/bookings", icon: CalendarCheck },
-  { title: "อนุมัติคำขอ", href: "/approvals", icon: ClipboardCheck },
 ]
 
 const recordNav = [
@@ -82,7 +87,6 @@ export function AppSidebar() {
               className="size-20 object-contain" 
             />
           </div>
-          {/* ✅ ปรับเป็น text-white เพื่อให้เห็นชื่อระบบชัดเจน */}
           <div className="flex flex-col group-data-[collapsible=icon]:hidden text-white">
             <span className="text-sm font-semibold leading-tight">ระบบยานพาหนะ</span>
             <span className="text-xs text-white/60">Vehicle Management</span>
@@ -154,7 +158,6 @@ export function AppSidebar() {
                       {user?.name?.[0] ?? "?"}
                     </AvatarFallback>
                   </Avatar>
-                  {/* ✅ ปรับเป็น text-white เพื่อให้เห็นชื่อผู้ใช้ชัดเจน */}
                   <div className="flex flex-1 flex-col group-data-[collapsible=icon]:hidden text-left">
                     <span className="text-xs font-medium text-white">{user?.name ?? "ไม่ทราบชื่อ"}</span>
                     <span className="text-[10px] text-white/50">

@@ -1,6 +1,5 @@
 "use client"
 
-// 1. เพิ่ม useRef เข้ามา
 import { createContext, useContext, useState, useCallback, useEffect, useRef } from "react"
 import { supabase } from "./supabase"
 
@@ -11,15 +10,13 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
   
-  // 2. สร้าง Flag สำหรับป้องกันการเรียก fetch ข้อมูลซ้อนกัน
   const fetching = useRef(false);
 
   const fetchProfile = async (authUser) => {
-    // ถ้ากำลังดึงข้อมูลอยู่ (true) ให้ return ออกไปเลย ไม่ต้องทำซ้ำ
     if (fetching.current) return;
 
     try {
-      fetching.current = true; // เริ่มการดึงข้อมูล ให้ตั้งเป็น true
+      fetching.current = true;
 
       const { data, error } = await supabase
         .from("profiles")
@@ -54,19 +51,18 @@ export function AuthProvider({ children }) {
       return userData;
 
     } catch (err) {
-      // ถ้า Error เกี่ยวกับ Lock (Race condition) ไม่ต้องพ่นออกมาที่ console ให้รก
       if (!err.message.includes("lock")) {
         console.error("Error fetching profile:", err.message);
       }
       return null;
     } finally {
-      fetching.current = false; // ทำงานเสร็จแล้ว (ไม่ว่าจะสำเร็จหรือพัง) ให้ปลดล็อกเป็น false
+      fetching.current = false;
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
-    let mounted = true; // ใช้เช็คว่า component ยังอยู่บนหน้าจอไหม
+    let mounted = true;
 
     const initAuth = async () => {
       const { data: { session } } = await supabase.auth.getSession();
@@ -80,7 +76,6 @@ export function AuthProvider({ children }) {
     initAuth();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      // เรียก fetchProfile เฉพาะเมื่อมีการ SIGNED_IN หรือ TOKEN_REFRESHED และมี user
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user && mounted) {
         await fetchProfile(session.user);
       } else if (event === 'SIGNED_OUT') {
@@ -91,7 +86,7 @@ export function AuthProvider({ children }) {
     });
 
     return () => {
-      mounted = false; // Cleanup เมื่อปิดหน้า
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
@@ -132,17 +127,23 @@ export function AuthProvider({ children }) {
   )
 }
 
-// ... ส่วนที่เหลือ (useAuth, canAccessRoute, ฯลฯ) คงเดิม ...
-
 export function useAuth() {
   const context = useContext(AuthContext)
   if (!context) throw new Error("useAuth must be used within an AuthProvider")
   return context
 }
 
+/**
+ * ✅ แก้ไขส่วนการเข้าถึงเมนู (Access Control)
+ * เพิ่ม /history ให้ admin และ approver
+ */
 const ROLE_MENU_ACCESS = {
-  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/logbook", "/maintenance", "/reports"],
-  approver: ["/", "/bookings", "/approvals", "/reports"],
+  // admin เข้าถึงได้ทุกหน้า รวมประวัติ
+  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports"],
+  
+  // ผู้อนุมัติ เข้าถึงหน้าจอง, อนุมัติ, รายงาน และประวัติ
+  approver: ["/", "/bookings", "/approvals", "/history", "/reports"],
+  
   driver: ["/", "/logbook"],
   user: ["/", "/bookings"],
 }

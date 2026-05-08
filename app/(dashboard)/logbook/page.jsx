@@ -1,10 +1,11 @@
 "use client"
 
+import { useAuth } from "@/lib/auth-context"
 import { useState, useEffect } from "react"
 import { 
   Search, FileImage, MapPin, Camera, Play, 
   Square, CheckCircle2, AlertCircle, Loader2,
-  Calendar as CalendarIcon, Clock, Fuel
+  Calendar as CalendarIcon, Clock, Fuel, Save // ✅ นำเข้า Save
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -31,6 +32,7 @@ import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
 
 import { supabase } from "@/lib/supabase"
+import Swal from "sweetalert2" 
 
 // ================= HELPERS =================
 function formatThaiDate(dateStr) {
@@ -50,9 +52,6 @@ function formatTime(time) {
 
 // ================= SUB-COMPONENTS =================
 
-/**
- * ปุ่มอัปโหลดรูปภาพพร้อม Preview
- */
 function FileUploadButton({ label, onUpload, url, icon = <Camera className="size-4" />, loading = false }) {
   return (
     <div className="space-y-2">
@@ -66,7 +65,7 @@ function FileUploadButton({ label, onUpload, url, icon = <Camera className="size
       >
         <label className="cursor-pointer">
           {loading ? <Loader2 className="size-4 animate-spin" /> : (url ? <CheckCircle2 className="size-4" /> : icon)}
-          <span className="text-sm">{url ? "เปลี่ยนรูปภาพ" : label}</span>
+          <span className="text-sm">{url ? "เปลี่ยนรูปภาพแล้ว" : label}</span>
           <input
             type="file"
             className="hidden"
@@ -89,9 +88,6 @@ function FileUploadButton({ label, onUpload, url, icon = <Camera className="size
   )
 }
 
-/**
- * รายการงานวันนี้ของคนขับ
- */
 function DriverTodayJobs({ bookings, startTrip }) {
   return (
     <div className="flex flex-col gap-4">
@@ -147,7 +143,7 @@ function DriverTodayJobs({ bookings, startTrip }) {
                     <span className="font-bold text-foreground">คนขับ:</span> {booking.drivers?.name}
                   </div>
                   <Button size="sm" className="rounded-full px-4" onClick={() => startTrip(booking)}>
-                    <Play className="mr-2 size-3 fill-current" /> เริ่มงาน
+                    <Play className="mr-2 size-3 fill-current" /> {booking.status === 'started' ? "บันทึกต่อ" : "เริ่มงาน"}
                   </Button>
                 </div>
               </CardContent>
@@ -166,51 +162,53 @@ function TripRecordForm({ booking }) {
   const [isStarted, setIsStarted] = useState(false)
   const [days, setDays] = useState([])
   const [loading, setLoading] = useState(false)
-  const [initialized, setInitialized] = useState(false)
-  const [uploadingField, setUploadingField] = useState(null) // เก็บว่าช่องไหนกำลังโหลดรูป
+  const [uploadingField, setUploadingField] = useState(null)
+  const [savingIndex, setSavingIndex] = useState(null) // ✅ เอาไว้ทำ Loading ปุ่ม Save รายวัน
 
-  // Resume Draft
+  // ✅ โหลดข้อมูลจาก Database ตรงๆ ไม่ใช้ localStorage แล้ว
   useEffect(() => {
-    const saved = localStorage.getItem("tripDraft")
-    if (saved && !booking?.autoStart) {
-      setDays(JSON.parse(saved))
+    async function loadLogs() {
+      if (!booking) return
+
+      // ค้นหาประวัติการบันทึกงานนี้จาก Database
+      const { data: savedLogs } = await supabase
+        .from("logbooks")
+        .select("*")
+        .eq("booking_id", booking.id)
+        .order("log_date", { ascending: true })
+
+      const start = new Date(booking.start_date)
+      const end = booking.end_date ? new Date(booking.end_date) : new Date(booking.start_date)
+      let current = new Date(start)
+      let temp = []
+      let dayIndex = 0
+
+      // สร้างฟอร์มตามจำนวนวันที่จอง
+      while (current <= end) {
+        const dateStr = current.toISOString().slice(0, 10)
+        // เช็คว่ามีข้อมูลของวันนี้ใน DB หรือยัง
+        const existing = savedLogs?.find(l => l.log_date === dateStr)
+
+        temp.push(existing ? { ...existing, date: dateStr } : {
+          booking_id: booking.id,
+          vehicle_id: booking.vehicle_id,
+          driver_id: booking.driver_id,
+          date: dateStr, // ใช้ date สำหรับ UI แต่ตอนบันทึกลง DB จะใช้ log_date
+          start_mileage: dayIndex === 0 ? (booking.vehicles?.last_mileage || "") : "", 
+          end_mileage: "",
+          fuel_liter: "", fuel_cost: "",
+          note: "", status: "normal",
+          mileage_start_image: null, mileage_end_image: null, receipt_image: null
+        })
+        current.setDate(current.getDate() + 1)
+        dayIndex++
+      }
+      setDays(temp)
       setIsStarted(true)
     }
-  }, [])
 
-  // Auto Save
-  useEffect(() => {
-    if (days.length > 0) {
-      localStorage.setItem("tripDraft", JSON.stringify(days))
-    }
-  }, [days])
-
-  async function startTrip() {
-    if (!booking) return
-    const start = new Date(booking.start_date)
-    const end = booking.end_date ? new Date(booking.end_date) : new Date(booking.start_date)
-    let current = new Date(start)
-    let temp = []
-    while (current <= end) {
-      temp.push({
-        date: current.toISOString().slice(0, 10),
-        start_mileage: "", end_mileage: "",
-        fuel_liter: "", fuel_cost: "",
-        note: "", status: "normal",
-        mileage_start_image: null, mileage_end_image: null, receipt_image: null
-      })
-      current.setDate(current.getDate() + 1)
-    }
-    setDays(temp)
-    setIsStarted(true)
-  }
-
-  useEffect(() => {
-    if (booking && booking.autoStart && !initialized) {
-      startTrip()
-      setInitialized(true)
-    }
-  }, [booking?.id])
+    loadLogs()
+  }, [booking])
 
   async function uploadImage(file, fieldKey) {
     if (!file) return null
@@ -227,6 +225,48 @@ function TripRecordForm({ booking }) {
     const { data } = supabase.storage.from("logbook-images").getPublicUrl(fileName)
     setUploadingField(null)
     return data.publicUrl
+  }
+
+  // ✅ ฟังก์ชันบันทึกข้อมูลลง DB แบบรายวัน
+  async function saveDay(index) {
+    setSavingIndex(index)
+    const d = days[index]
+    
+    const startM = Number(d.start_mileage) || 0
+    const endM = Number(d.end_mileage) || 0
+    const dist = endM - startM
+
+    const payload = {
+      booking_id: booking.id,
+      vehicle_id: booking.vehicle_id,
+      driver_id: booking.driver_id,
+      log_date: d.date, // บันทึกด้วย log_date ให้ตรง Database
+      start_mileage: d.status === "breakdown" ? 0 : startM,
+      end_mileage: d.status === "breakdown" ? 0 : endM,
+      distance: dist > 0 ? dist : 0,
+      fuel_liter: Number(d.fuel_liter) || 0,
+      fuel_cost: Number(d.fuel_cost) || 0,
+      note: d.note || null,
+      status: d.status,
+      mileage_start_image: d.status === "breakdown" ? null : d.mileage_start_image,
+      mileage_end_image: d.status === "breakdown" ? null : d.mileage_end_image,
+      receipt_image: d.receipt_image
+    }
+
+    // ใช้คำสั่ง upsert เพื่ออัปเดตข้อมูลของวันนั้นๆ (ถ้ายังไม่มีก็จะสร้างใหม่)
+    const { error } = await supabase.from("logbooks").upsert(payload, { 
+      onConflict: 'booking_id, log_date' 
+    })
+
+    if (error) {
+      Swal.fire('ข้อผิดพลาด', error.message, 'error')
+    } else {
+      if (booking.status !== 'started') {
+        await supabase.from("bookings").update({ status: "started" }).eq("id", booking.id)
+      }
+      Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', text: `บันทึกข้อมูลของวันที่ ${formatThaiDate(d.date)} เก็บเข้าระบบแล้ว ท่านสามารถออกจากหน้านี้ได้`, timer: 2000, showConfirmButton: false })
+    }
+    setSavingIndex(null)
   }
 
   function validate() {
@@ -253,45 +293,50 @@ function TripRecordForm({ booking }) {
     return true
   }
 
-  
-
   async function finishTrip() {
     if (!validate()) return
     setLoading(true)
 
+    // บันทึกกวาดเก็บครั้งสุดท้ายเผื่อคนขับลืมกดบันทึกของวันสุดท้าย
     const inserts = days.map(d => ({
       booking_id: booking.id,
       vehicle_id: booking.vehicle_id,
       driver_id: booking.driver_id,
+      log_date: d.date, 
       start_mileage: d.status === "breakdown" ? 0 : Number(d.start_mileage || 0),
       end_mileage: d.status === "breakdown" ? 0 : Number(d.end_mileage || 0),
-      distance: d.status === "breakdown" ? 0 : Number(d.end_mileage || 0) - Number(d.start_mileage || 0),
-      fuel_liter: d.fuel_liter || 0,
-      fuel_cost: d.fuel_cost || 0,
+      distance: d.status === "breakdown" ? 0 : (Number(d.end_mileage || 0) - Number(d.start_mileage || 0)),
+      fuel_liter: Number(d.fuel_liter) || 0,
+      fuel_cost: Number(d.fuel_cost) || 0,
       note: d.note || null,
       status: d.status,
       mileage_start_image: d.status === "breakdown" ? null : d.mileage_start_image,
       mileage_end_image: d.status === "breakdown" ? null : d.mileage_end_image,
       receipt_image: d.receipt_image,
-      created_at: new Date(d.date).toISOString()
     }))
 
-    const { error } = await supabase.from("logbooks").insert(inserts)
+    const { error } = await supabase.from("logbooks").upsert(inserts, { onConflict: 'booking_id, log_date' })
+    
     if (error) {
       alert("บันทึกไม่สำเร็จ: " + error.message)
       setLoading(false)
       return
     }
 
-    localStorage.removeItem("tripDraft")
+    // อัปเดตสถานะต่างๆ เป็นการปิดงาน
+    const lastDay = days[days.length - 1]
+    const finalMileage = Number(lastDay.end_mileage) || 0
+    await supabase.from("vehicles").update({ last_mileage: finalMileage, status: "available" }).eq("id", booking.vehicle_id)
+    await supabase.from("drivers").update({ status: "available" }).eq("id", booking.driver_id)
     await supabase.from("bookings").update({ status: "completed" }).eq("id", booking.id)
-    alert("บันทึกข้อมูลการเดินทางเรียบร้อยแล้ว")
-    window.location.reload()
+    
+    Swal.fire('สำเร็จ', 'ส่งรายงานและสิ้นสุดการเดินทางเรียบร้อยแล้ว', 'success').then(() => {
+      window.location.reload()
+    })
   }
 
   return (
     <div className="flex flex-col gap-6 pb-24">
-      {/* Current Job Summary */}
       <Card className="bg-primary/5 border-primary/20 shadow-none">
         <CardContent className="pt-6">
           <div className="flex flex-col sm:flex-row justify-between gap-4">
@@ -317,11 +362,9 @@ function TripRecordForm({ booking }) {
         </CardContent>
       </Card>
 
-      {/* Timeline of days */}
       <div className="space-y-8">
         {isStarted && days.map((d, index) => (
           <div key={index} className="relative pl-8 border-l-2 border-dashed border-muted ml-3 space-y-4">
-            {/* Timeline Indicator */}
             <div className="absolute -left-[13px] top-0 size-6 rounded-full border-4 border-background bg-primary shadow-sm flex items-center justify-center">
               <div className="size-1.5 rounded-full bg-white" />
             </div>
@@ -362,7 +405,6 @@ function TripRecordForm({ booking }) {
                 
                 {d.status === "normal" ? (
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                    {/* ไมล์เริ่ม */}
                     <div className="space-y-4">
                       <div className="flex items-center gap-2 text-sm font-bold text-success">
                         <Play className="size-4 fill-current" /> บันทึกไมล์เริ่ม
@@ -391,7 +433,6 @@ function TripRecordForm({ booking }) {
                       />
                     </div>
 
-                    {/* ไมล์จบ */}
                     <div className="space-y-4 border-t pt-6 md:border-t-0 md:pt-0">
                       <div className="flex items-center gap-2 text-sm font-bold text-destructive">
                         <Square className="size-4 fill-current" /> บันทึกไมล์จบ
@@ -402,8 +443,14 @@ function TripRecordForm({ booking }) {
                         className="h-12 text-lg font-mono"
                         value={d.end_mileage}
                         onChange={(e) => {
+                          const val = e.target.value
                           const newDays = [...days]
-                          newDays[index].end_mileage = e.target.value
+                          newDays[index].end_mileage = val
+                          
+                          if (newDays[index + 1] && newDays[index].status !== "breakdown") {
+                            newDays[index + 1].start_mileage = val
+                          }
+                          
                           setDays(newDays)
                         }}
                       />
@@ -440,7 +487,6 @@ function TripRecordForm({ booking }) {
 
                 <Separator />
 
-                {/* ส่วนน้ำมัน */}
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 text-sm font-bold text-amber-600">
                     <Fuel className="size-4" /> ข้อมูลน้ำมันและค่าใช้จ่าย (ถ้ามี)
@@ -486,6 +532,19 @@ function TripRecordForm({ booking }) {
                     url={d.receipt_image}
                   />
                 </div>
+
+                {/* ✅ ปุ่มบันทึกข้อมูลแยกตามรายวัน */}
+                <div className="flex justify-end pt-4 border-t border-dashed mt-4">
+                  <Button 
+                    variant="outline" 
+                    className="font-bold border-primary text-primary hover:bg-primary/10" 
+                    onClick={() => saveDay(index)} 
+                    disabled={savingIndex === index}
+                  >
+                    {savingIndex === index ? <Loader2 className="mr-2 size-4 animate-spin" /> : <Save className="mr-2 size-4" />}
+                    บันทึกข้อมูลวันที่ {index + 1} ลงระบบ
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           </div>
@@ -502,7 +561,7 @@ function TripRecordForm({ booking }) {
           {loading ? (
             <><Loader2 className="mr-2 size-5 animate-spin" /> กำลังส่งข้อมูล...</>
           ) : (
-            "ส่งรายงานและจบงาน"
+            "สิ้นสุดการเดินทางทั้งหมด"
           )}
         </Button>
       </div>
@@ -516,26 +575,62 @@ export default function LogbookPage() {
   const [bookings, setBookings] = useState([])
   const [activeTab, setActiveTab] = useState("today")
   const [selectedBooking, setSelectedBooking] = useState(null)
+  
+  const { user } = useAuth()
 
   useEffect(() => {
-    fetchBookings()
-  }, [])
+    if (user) {
+      fetchBookings()
+    }
+  }, [user])
 
   async function fetchBookings() {
-    const { data } = await supabase
+    let myDriverId = null;
+
+    if (user.role === "driver") {
+      const { data: driverData } = await supabase
+        .from("drivers")
+        .select("id")
+        .eq("user_id", user.id)
+        .single()
+      
+      if (driverData) {
+        myDriverId = driverData.id;
+      } else {
+        setBookings([]);
+        return; 
+      }
+    }
+
+    let query = supabase
       .from("bookings")
       .select(`
-        id, user_name, department, destination,
+        id, user_name, department, destination, status,
         start_date, end_date, start_time, end_time,
         vehicle_id, driver_id,
-        vehicles:vehicle_id ( license_plate ),
+        vehicles:vehicle_id ( license_plate, last_mileage ),
         drivers:driver_id ( name )
       `)
       .in("status", ["approved", "started"])
+      .order("start_date", { ascending: true })
+
+    if (user.role === "driver" && myDriverId) {
+      query = query.eq("driver_id", myDriverId);
+    }
+
+    const { data, error } = await query;
     
+    if (error) {
+      console.error("Fetch Error:", error.message);
+      Swal.fire({
+        icon: 'error',
+        title: 'ไม่สามารถดึงข้อมูลได้',
+        text: `รายละเอียด: ${error.message}`,
+      });
+    }
+
     setBookings(data || [])
   }
-
   function startTrip(booking) {
     setSelectedBooking({
       ...booking,

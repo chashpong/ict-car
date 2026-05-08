@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Plus, Search, Wrench, CalendarClock, Camera } from "lucide-react"
+import { Plus, Search, Wrench, CalendarClock, Camera, Loader2, CheckCircle2 } from "lucide-react" // ✅ เพิ่ม CheckCircle2
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -33,6 +33,8 @@ import {
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth-context" 
+import Swal from "sweetalert2" // ✅ นำเข้า Swal
 
 const repairTypeOptions = [
   "เปลี่ยนถ่ายน้ำมันเครื่อง",
@@ -43,7 +45,7 @@ const repairTypeOptions = [
   "อื่นๆ",
 ]
 
-function AddMaintenanceForm({ onClose, onSave, vehicles }) {
+function AddMaintenanceForm({ onClose, onSave, vehicles, isSaving }) {
   const [formData, setFormData] = useState({
     vehicle_id: "",
     vehicle_plate: "",
@@ -92,7 +94,7 @@ function AddMaintenanceForm({ onClose, onSave, vehicles }) {
       <div className="flex flex-col gap-2">
         <Label>เลือกรถ</Label>
         <Select
-          value={formData.vehicle_id}
+          value={formData.vehicle_id || undefined}
           onValueChange={(value) => {
             const selectedVehicle = vehicles.find((v) => String(v.id) === String(value))
             setFormData({
@@ -103,14 +105,18 @@ function AddMaintenanceForm({ onClose, onSave, vehicles }) {
           }}
         >
           <SelectTrigger>
-            <SelectValue placeholder="เลือกรถ" />
+            <SelectValue placeholder={vehicles.length === 0 ? "กำลังโหลดรถ..." : "เลือกรถ"} />
           </SelectTrigger>
-          <SelectContent>
-            {vehicles.map((v) => (
-              <SelectItem key={v.id} value={String(v.id)}>
-                {(v.license_plate || v.licensePlate)} - {v.brand} {v.model}
-              </SelectItem>
-            ))}
+          <SelectContent className="max-h-[200px]">
+            {vehicles.length === 0 ? (
+               <SelectItem value="empty" disabled>ไม่พบข้อมูลรถ</SelectItem>
+            ) : (
+              vehicles.map((v) => (
+                <SelectItem key={v.id} value={String(v.id)}>
+                  {(v.license_plate || v.licensePlate)} - {v.brand} {v.model}
+                </SelectItem>
+              ))
+            )}
           </SelectContent>
         </Select>
       </div>
@@ -119,7 +125,7 @@ function AddMaintenanceForm({ onClose, onSave, vehicles }) {
         <div className="flex flex-col gap-2">
           <Label>ประเภทการซ่อม</Label>
           <Select
-            value={formData.type}
+            value={formData.type || undefined}
             onValueChange={(value) =>
               setFormData({
                 ...formData,
@@ -132,12 +138,9 @@ function AddMaintenanceForm({ onClose, onSave, vehicles }) {
               <SelectValue placeholder="เลือกประเภท" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="เปลี่ยนถ่ายน้ำมันเครื่อง">เปลี่ยนถ่ายน้ำมันเครื่อง</SelectItem>
-              <SelectItem value="ซ่อมระบบเบรก">ซ่อมระบบเบรก</SelectItem>
-              <SelectItem value="เปลี่ยนยาง">เปลี่ยนยาง</SelectItem>
-              <SelectItem value="ตรวจเช็คระยะ">ตรวจเช็คระยะ</SelectItem>
-              <SelectItem value="ซ่อมแอร์">ซ่อมแอร์</SelectItem>
-              <SelectItem value="other">อื่นๆ</SelectItem>
+              {repairTypeOptions.map((type, idx) => (
+                <SelectItem key={idx} value={type === "อื่นๆ" ? "other" : type}>{type}</SelectItem>
+              ))}
             </SelectContent>
           </Select>
 
@@ -197,7 +200,7 @@ function AddMaintenanceForm({ onClose, onSave, vehicles }) {
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label>แนบใบเสร็จ</Label>
+        <Label>แนบใบเสร็จ (ถ้ามี)</Label>
         <Input
           type="file"
           accept="image/*,.pdf"
@@ -211,20 +214,38 @@ function AddMaintenanceForm({ onClose, onSave, vehicles }) {
       </div>
 
       <div className="flex justify-end gap-2 pt-2">
-        <Button variant="outline" onClick={onClose}>
+        <Button variant="outline" onClick={onClose} disabled={isSaving}>
           ยกเลิก
         </Button>
-        <Button onClick={handleSubmit}>บันทึก</Button>
+        <Button onClick={handleSubmit} disabled={isSaving}>
+          {isSaving ? <><Loader2 className="mr-2 size-4 animate-spin" /> กำลังบันทึก...</> : "บันทึก"}
+        </Button>
       </div>
     </div>
   )
 }
+
 export default function MaintenancePage() {
   const [maintenanceRecords, setMaintenanceRecords] = useState([])
   const [vehicles, setVehicles] = useState([])
   const [search, setSearch] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [loading, setLoading] = useState(true)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const { user } = useAuth()
+
+  if (!user || user.role !== "admin") {
+    return (
+      <div className="flex h-[80vh] flex-col items-center justify-center text-center">
+        <div className="rounded-full bg-red-100 p-6 mb-4">
+          <Wrench className="size-12 text-red-600" />
+        </div>
+        <h1 className="text-2xl font-bold text-slate-800">ไม่มีสิทธิ์เข้าถึง</h1>
+        <p className="text-slate-500 mt-2">หน้านี้สงวนไว้สำหรับผู้ดูแลระบบ (Admin) เท่านั้น</p>
+      </div>
+    )
+  }
 
   useEffect(() => {
     fetchData()
@@ -233,20 +254,14 @@ export default function MaintenancePage() {
   async function fetchData() {
     try {
       setLoading(true)
-
       const [{ data: maintenanceData, error: maintenanceError }, { data: vehiclesData, error: vehiclesError }] =
         await Promise.all([
           supabase.from("maintenance").select("*").order("date", { ascending: false }),
           supabase.from("vehicles").select("*").order("license_plate", { ascending: true }),
         ])
 
-      if (maintenanceError) {
-        console.error(maintenanceError)
-      }
-
-      if (vehiclesError) {
-        console.error(vehiclesError)
-      }
+      if (maintenanceError) console.error(maintenanceError)
+      if (vehiclesError) console.error(vehiclesError)
 
       setMaintenanceRecords(maintenanceData || [])
       setVehicles(vehiclesData || [])
@@ -255,6 +270,71 @@ export default function MaintenancePage() {
     } finally {
       setLoading(false)
     }
+  }
+
+  // ✅ 1. ฟังก์ชันบันทึกข้อมูล (อัปเดตสถานะรถเป็น ซ่อมบำรุง ด้วย)
+  async function handleSaveMaintenance(payload) {
+    setIsSaving(true);
+    try {
+      const insertData = {
+        vehicle_id: payload.vehicle_id,
+        vehicle_plate: payload.vehicle_plate,
+        type: payload.type,
+        date: payload.date,
+        cost: payload.cost,
+        next_due: payload.next_due || null,
+        description: payload.description || null,
+      };
+
+      // บันทึกลงตาราง maintenance
+      const { error: insertError } = await supabase.from('maintenance').insert([insertData]);
+      if (insertError) throw insertError;
+
+      // อัปเดตสถานะรถในตาราง vehicles ให้เป็น 'maintenance'
+      const { error: updateError } = await supabase.from('vehicles')
+        .update({ status: 'maintenance' })
+        .eq('id', payload.vehicle_id);
+      if (updateError) throw updateError;
+
+      Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', text: 'เพิ่มประวัติและเปลี่ยนสถานะรถเป็น "ซ่อมบำรุง" แล้ว', timer: 2000, showConfirmButton: false });
+      setDialogOpen(false); 
+      fetchData(); 
+
+    } catch (error) {
+      console.error("Error saving maintenance:", error);
+      Swal.fire('ข้อผิดพลาด', 'เกิดข้อผิดพลาดในการบันทึก: ' + error.message, 'error');
+    } finally {
+      setIsSaving(false);
+    }
+  }
+
+  // ✅ 2. ฟังก์ชันกดซ่อมเสร็จ (เปลี่ยนสถานะรถกลับเป็น ว่างพร้อมใช้)
+  async function handleFinishRepair(vehicleId, plate) {
+    Swal.fire({
+      title: `นำรถ ${plate} กลับมาใช้งาน?`,
+      text: "ระบบจะเปลี่ยนสถานะรถคันนี้กลับเป็น 'ว่าง/พร้อมใช้งาน'",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#3085d6',
+      cancelButtonColor: '#d33',
+      confirmButtonText: 'ใช่, ซ่อมเสร็จแล้ว',
+      cancelButtonText: 'ยกเลิก'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        try {
+          const { error } = await supabase.from('vehicles')
+            .update({ status: 'available' })
+            .eq('id', vehicleId);
+            
+          if (error) throw error;
+          
+          Swal.fire('สำเร็จ!', `เปลี่ยนสถานะรถ ${plate} เป็นว่างพร้อมใช้แล้ว`, 'success');
+          fetchData(); // ดึงข้อมูลใหม่เพื่ออัปเดตปุ่ม
+        } catch (error) {
+          Swal.fire('ข้อผิดพลาด', error.message, 'error');
+        }
+      }
+    });
   }
 
   const filtered = useMemo(() => {
@@ -309,7 +389,8 @@ export default function MaintenancePage() {
               <AddMaintenanceForm
                 vehicles={vehicles}
                 onClose={() => setDialogOpen(false)}
-                onSaved={fetchData}
+                onSave={handleSaveMaintenance} 
+                isSaving={isSaving}
               />
             </DialogContent>
           </Dialog>
@@ -390,51 +471,71 @@ export default function MaintenancePage() {
                   <TableHead className="hidden sm:table-cell">วันที่</TableHead>
                   <TableHead>ค่าใช้จ่าย</TableHead>
                   <TableHead className="hidden md:table-cell">รายละเอียด</TableHead>
-                  <TableHead className="hidden lg:table-cell">ครบกำหนดถัดไป</TableHead>
+                  {/* ✅ เพิ่มคอลัมน์จัดการ */}
+                  <TableHead className="text-right pr-6">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
                       กำลังโหลดข้อมูล...
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="text-center text-muted-foreground py-10">
                       ไม่พบข้อมูลการซ่อมบำรุง
                     </TableCell>
                   </TableRow>
                 ) : (
-                  filtered.map((record) => (
-                    <TableRow key={record.id}>
-                      <TableCell className="font-medium">
-                        {record.vehicle_plate || "-"}
-                      </TableCell>
+                  filtered.map((record) => {
+                    // เช็คว่ารถคันนี้ปัจจุบันสถานะยังเป็น maintenance อยู่ไหม
+                    const currentVehicle = vehicles.find(v => v.id === record.vehicle_id);
+                    const isStillRepairing = currentVehicle?.status === "maintenance";
 
-                      <TableCell>
-                        <Badge variant="outline">{record.type || "-"}</Badge>
-                      </TableCell>
+                    return (
+                      <TableRow key={record.id}>
+                        <TableCell className="font-bold text-primary">
+                          {record.vehicle_plate || "-"}
+                        </TableCell>
 
-                      <TableCell className="hidden sm:table-cell">
-                        {record.date || "-"}
-                      </TableCell>
+                        <TableCell>
+                          <Badge variant="outline" className="bg-slate-50">{record.type || "-"}</Badge>
+                        </TableCell>
 
-                      <TableCell>
-                        {Number(record.cost || 0).toLocaleString()} บาท
-                      </TableCell>
+                        <TableCell className="hidden sm:table-cell">
+                          {record.date || "-"}
+                        </TableCell>
 
-                      <TableCell className="hidden max-w-[220px] truncate text-muted-foreground md:table-cell">
-                        {record.description || "-"}
-                      </TableCell>
+                        <TableCell className="font-medium text-destructive">
+                          {Number(record.cost || 0).toLocaleString()} ฿
+                        </TableCell>
 
-                      <TableCell className="hidden lg:table-cell">
-                        {record.next_due || "-"}
-                      </TableCell>
-                    </TableRow>
-                  ))
+                        <TableCell className="hidden max-w-[220px] truncate text-muted-foreground md:table-cell">
+                          {record.description || "-"}
+                        </TableCell>
+
+                        {/* ✅ คอลัมน์ปุ่มกด "ซ่อมเสร็จ" */}
+                        <TableCell className="text-right pr-4">
+                          {isStillRepairing ? (
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="border-emerald-500 text-emerald-600 hover:bg-emerald-50 font-bold"
+                              onClick={() => handleFinishRepair(record.vehicle_id, record.vehicle_plate)}
+                            >
+                              <CheckCircle2 className="size-4 mr-1" />
+                              คืนสถานะว่าง
+                            </Button>
+                          ) : (
+                            <span className="text-xs text-muted-foreground font-medium pr-2">เคลียร์แล้ว</span>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    )
+                  })
                 )}
               </TableBody>
             </Table>

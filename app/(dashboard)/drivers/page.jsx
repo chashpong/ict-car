@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { 
   Plus, Search, Pencil, Trash2, Loader2, 
-  UserCheck, Users, Car, UserMinus, Info 
+  UserCheck, Users, Car, UserMinus, Info, Link as LinkIcon 
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -55,12 +55,14 @@ const statusMap = {
   }
 }
 
-function DriverForm({ driver, onClose, onSave }) {
+// ✅ อัปเดต DriverForm ให้รับ users มาแสดงใน Dropdown
+function DriverForm({ driver, users, onClose, onSave }) {
   const [form, setForm] = useState({
     name: driver?.name || "",
     phone: driver?.phone || "",
     license_number: driver?.license_number || "",
-    status: driver?.status || "available"
+    status: driver?.status || "available",
+    user_id: driver?.user_id || "none" // ✅ เพิ่ม user_id
   })
   const [isSaving, setIsSaving] = useState(false)
 
@@ -103,7 +105,7 @@ function DriverForm({ driver, onClose, onSave }) {
           <SelectTrigger className="rounded-xl h-11 text-black">
             <SelectValue />
           </SelectTrigger>
-          <SelectContent className="font-sarabun bg-white text-black">
+          <SelectContent className="font-sarabun bg-white text-black border-slate-200">
             <SelectItem value="available">ว่าง / พร้อมทำงาน</SelectItem>
             <SelectItem value="busy">กำลังปฏิบัติงาน (กำลังขับ)</SelectItem>
             <SelectItem value="inactive">หยุดงาน / ลางาน</SelectItem>
@@ -111,12 +113,38 @@ function DriverForm({ driver, onClose, onSave }) {
         </Select>
       </div>
 
-      <div className="flex justify-end gap-3 pt-4 border-t">
-        <Button variant="ghost" onClick={onClose} disabled={isSaving} className="rounded-xl">ยกเลิก</Button>
+      {/* ✅ เพิ่มส่วนผูกบัญชี User Account */}
+      <div className="space-y-2 bg-blue-50/50 p-4 rounded-xl border border-blue-100">
+        <Label className="font-bold flex items-center gap-2 text-blue-800">
+          <LinkIcon className="size-4" /> ผูกกับบัญชีผู้ใช้งาน (User Account)
+        </Label>
+        <p className="text-[11px] text-blue-600/80 mb-2">เพื่อให้ระบบรู้ว่าคนขับคนนี้คือใครตอนล็อกอินเข้าแอป</p>
+        <Select value={form.user_id} onValueChange={(v) => setForm({ ...form, user_id: v })}>
+          <SelectTrigger className="rounded-xl h-11 text-black bg-white">
+            <SelectValue placeholder="-- ไม่ผูกบัญชี --" />
+          </SelectTrigger>
+          <SelectContent className="font-sarabun bg-white text-black border-slate-200">
+            <SelectItem value="none">-- ไม่ผูกบัญชี --</SelectItem>
+            {users.map(u => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.full_name || u.name || 'ไม่ระบุชื่อ'} ({u.email})
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+
+      <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+        <Button variant="ghost" onClick={onClose} disabled={isSaving} className="rounded-xl text-slate-500">ยกเลิก</Button>
         <Button 
           onClick={async () => {
             setIsSaving(true)
-            await onSave(form)
+            // ✅ แปลงค่า "none" กลับเป็น null ก่อนเซฟลง Database
+            const payload = { 
+              ...form, 
+              user_id: form.user_id === "none" ? null : form.user_id 
+            }
+            await onSave(payload)
             setIsSaving(false)
           }} 
           disabled={isSaving}
@@ -132,12 +160,16 @@ function DriverForm({ driver, onClose, onSave }) {
 
 export default function DriversPage() {
   const [drivers, setDrivers] = useState([])
+  const [users, setUsers] = useState([]) // ✅ State สำหรับเก็บรายชื่อ User
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editDriver, setEditDriver] = useState(null)
 
-  useEffect(() => { fetchDrivers() }, [])
+  useEffect(() => { 
+    fetchDrivers()
+    fetchUsers() // ✅ โหลดรายชื่อผู้ใช้งานเตรียมไว้
+  }, [])
 
   async function fetchDrivers() {
     setLoading(true)
@@ -148,6 +180,15 @@ export default function DriversPage() {
     
     if (!error) setDrivers(data || [])
     setLoading(false)
+  }
+
+  // ✅ ฟังก์ชันดึงรายชื่อผู้ใช้จากตาราง profiles (หรือชื่อตารางที่คุณใช้เก็บข้อมูลสมาชิก)
+  async function fetchUsers() {
+    const { data, error } = await supabase
+      .from("profiles") // ⚠️ หมายเหตุ: ถ้าตารางผู้ใช้ของคุณไม่ได้ชื่อ profiles ให้แก้ชื่อตารางตรงนี้นะครับ
+      .select("id, full_name, email") 
+    
+    if (!error) setUsers(data || [])
   }
 
   async function saveDriver(data) {
@@ -212,13 +253,16 @@ export default function DriversPage() {
               <Plus className="mr-2 size-4" />เพิ่มคนขับใหม่
             </Button>
           </DialogTrigger>
-          <DialogContent className="sm:max-w-[450px] rounded-3xl border-none shadow-2xl bg-white text-black">
-            <DialogHeader className="pb-4 border-b">
-              <DialogTitle className="text-xl font-bold">
+          <DialogContent className="sm:max-w-[500px] rounded-[2rem] border-none shadow-2xl bg-white text-black p-0 overflow-hidden">
+            <DialogHeader className="p-6 bg-slate-900 text-white">
+              <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                {editDriver ? <Pencil className="size-5" /> : <Plus className="size-5" />}
                 {editDriver ? "แก้ไขข้อมูลคนขับ" : "ลงทะเบียนคนขับใหม่"}
               </DialogTitle>
             </DialogHeader>
-            <DriverForm driver={editDriver} onClose={() => setDialogOpen(false)} onSave={saveDriver} />
+            <div className="px-6 pb-6 pt-2">
+              <DriverForm driver={editDriver} users={users} onClose={() => setDialogOpen(false)} onSave={saveDriver} />
+            </div>
           </DialogContent>
         </Dialog>
       </div>
@@ -254,7 +298,15 @@ export default function DriversPage() {
                 const status = statusMap[driver.status] || statusMap.inactive
                 return (
                   <TableRow key={driver.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50 text-black">
-                    <TableCell className="pl-8 font-bold text-slate-800">{driver.name}</TableCell>
+                    <TableCell className="pl-8">
+                      <p className="font-bold text-slate-800">{driver.name}</p>
+                      {/* ✅ แสดงสัญลักษณ์ถ้าคนขับคนนี้ถูกผูกบัญชีแล้ว */}
+                      {driver.user_id && (
+                        <p className="text-[10px] text-blue-600 font-bold flex items-center mt-1">
+                          <LinkIcon className="size-3 mr-1" /> เชื่อมบัญชีแล้ว
+                        </p>
+                      )}
+                    </TableCell>
                     <TableCell className="text-center font-medium text-slate-600">{driver.phone || "-"}</TableCell>
                     <TableCell className="text-center font-mono text-slate-500">{driver.license_number || "-"}</TableCell>
                     <TableCell className="text-center">
