@@ -1,20 +1,19 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import { useAuth } from "@/lib/auth-context"
 import {
   Check, X, ChevronRight, MapPin, Calendar, Users,
   Building2, Clock, Briefcase, UserCircle, Phone,
   Car, Info, MapPinned, UserPlus,
   PenTool, Eraser, Image as ImageIcon, Save, CheckCircle2,
-  Printer // ✅ เพิ่ม Icon Printer
+  Printer, Trash2, Upload, RefreshCw // ✅ นำเข้า RefreshCw สำหรับปุ่มรีเฟรช
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
-import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog" // ✅ นำเข้า DialogDescription เพื่อแก้ Error สีเหลือง
 import {
   Select,
   SelectContent,
@@ -27,11 +26,9 @@ import { supabase } from "@/lib/supabase"
 import Swal from 'sweetalert2'
 import SignatureCanvas from 'react-signature-canvas'
 
-// ✅ แก้ไขชื่อการ Import ให้ถูกต้อง (ห้ามมีขีดกลาง)
 import { Form3Document } from "@/components/form-3-document"
-import { useReactToPrint } from "react-to-print" // ✅ นำเข้าตัวช่วย Print
+import { useReactToPrint } from "react-to-print" 
 
-// --- ฟังก์ชันช่วยเหลือสำหรับการจัดรูปแบบไทย ---
 const formatThaiDate = (dateString) => {
   if (!dateString) return "ไม่ได้ระบุ";
   const date = new Date(dateString);
@@ -43,7 +40,7 @@ const formatThaiTime = (timeString) => {
   return `${timeString.substring(0, 5)} น.`;
 };
 
-// --- ส่วนที่ 1: การ์ดรายการ (Card) ---
+// --- ส่วนที่ 1: การ์ดรายการ ---
 function BookingApprovalCard({ booking, onClick }) {
   return (
     <Card className="group overflow-hidden border border-slate-200 shadow-sm hover:shadow-md transition-all duration-300 rounded-[1.5rem] bg-white font-sarabun text-black">
@@ -98,24 +95,36 @@ function BookingApprovalCard({ booking, onClick }) {
   )
 }
 
-// --- ส่วนที่ 2: เนื้อหาในป๊อปอัป (แสดงแบบ 2 คอลัมน์) ---
-function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers, selectedDriverId, setSelectedDriverId, userProfile }) {
+// --- ส่วนที่ 2: ป๊อปอัปตรวจสอบและพิจารณา ---
+function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers, selectedDriverId, setSelectedDriverId, userProfile, onUpdateSignatures }) {
 
   const sigCanvas = useRef(null)
-  const documentRef = useRef(null) // ✅ Ref สำหรับจับภาพไป Print
+  const documentRef = useRef(null) 
 
-  const hasSavedSignature = !!userProfile?.saved_signature
-  const [signatureMode, setSignatureMode] = useState(hasSavedSignature ? 'saved' : 'draw')
+  const savedSignatures = useMemo(() => {
+    try {
+      if (!userProfile?.saved_signature) return [];
+      if (userProfile.saved_signature.trim().startsWith('[')) {
+        return JSON.parse(userProfile.saved_signature);
+      } else {
+        return [{ id: 'legacy-1', data: userProfile.saved_signature }];
+      }
+    } catch (e) {
+      return [];
+    }
+  }, [userProfile?.saved_signature]);
+  
+  const canSaveMore = savedSignatures.length < 5;
+
+  const [signatureMode, setSignatureMode] = useState(savedSignatures.length > 0 ? 'saved' : 'draw')
   const [hasDrawn, setHasDrawn] = useState(false)
-  const [saveToProfile, setSaveToProfile] = useState(!hasSavedSignature)
 
-  // ✅ State สำหรับเก็บลายเซ็นไปแสดงโชว์สดๆ ในกระดาษ A4 ขวามือ
-  const [currentSignature, setCurrentSignature] = useState(hasSavedSignature ? userProfile.saved_signature : null)
+  const [currentSignature, setCurrentSignature] = useState(
+    savedSignatures.length > 0 ? savedSignatures[0].data : null
+  )
 
-
-  // ฟังก์ชันสั่ง Print ด้วย react-to-print
   const handlePrint = useReactToPrint({
-    contentRef: documentRef, // ✅ เปลี่ยนมาใช้ contentRef ตรงๆ แบบนี้ครับ
+    contentRef: documentRef, 
     documentTitle: `ใบขออนุญาตใช้รถ_${booking.user_name}`,
   });
 
@@ -123,11 +132,10 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
     if (sigCanvas.current) {
       sigCanvas.current.clear()
       setHasDrawn(false)
-      setCurrentSignature(null) // ล้างพรีวิวด้วย
+      setCurrentSignature(null) 
     }
   }
 
-  // ส่งลายเซ็นไปโชว์ที่กระดาษพรีวิวทันทีที่วาดเสร็จ
   const handleSignatureEnd = () => {
     if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
       setCurrentSignature(sigCanvas.current.getTrimmedCanvas().toDataURL('image/png'));
@@ -135,39 +143,141 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
     }
   };
 
-  // เปลี่ยนลายเซ็นพรีวิวเมื่อสลับโหมด
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_WIDTH = 800; 
+          const MAX_HEIGHT = 400; 
+          let width = img.width;
+          let height = img.height;
+
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const resizedBase64 = canvas.toDataURL('image/png');
+          setCurrentSignature(resizedBase64);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+    e.target.value = null;
+  };
+
   useEffect(() => {
     if (signatureMode === 'saved') {
-      setCurrentSignature(userProfile?.saved_signature || null);
-    } else {
+      if (savedSignatures.length > 0) {
+        const exists = savedSignatures.find(s => s.data === currentSignature)
+        if (!exists) setCurrentSignature(savedSignatures[0].data)
+      } else {
+        setCurrentSignature(null)
+      }
+    } else if (signatureMode === 'draw') {
       if (sigCanvas.current && !sigCanvas.current.isEmpty()) {
         setCurrentSignature(sigCanvas.current.getTrimmedCanvas().toDataURL('image/png'));
       } else {
         setCurrentSignature(null);
       }
+    } else if (signatureMode === 'upload') {
+      if (!currentSignature || !currentSignature.startsWith('data:image')) {
+        setCurrentSignature(null);
+      }
     }
-  }, [signatureMode, userProfile]);
+  }, [signatureMode, savedSignatures]);
+
+  const handleDeleteSignature = (idToDelete) => {
+    Swal.fire({
+      title: 'ลบลายเซ็นนี้?',
+      text: "คุณจะไม่สามารถกู้คืนได้",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      cancelButtonColor: '#94a3b8',
+      confirmButtonText: 'ลบทิ้ง',
+      cancelButtonText: 'ยกเลิก'
+    }).then(async (result) => {
+      if (result.isConfirmed) {
+        const updatedSignatures = savedSignatures.filter(sig => sig.id !== idToDelete)
+        await onUpdateSignatures(updatedSignatures) 
+        
+        const deletedSig = savedSignatures.find(sig => sig.id === idToDelete)
+        if (deletedSig && deletedSig.data === currentSignature) {
+          setCurrentSignature(updatedSignatures.length > 0 ? updatedSignatures[0].data : null)
+          if (updatedSignatures.length === 0) setSignatureMode('draw')
+        }
+      }
+    })
+  }
+
+  const handleInstantSave = async () => {
+    if (!currentSignature) return;
+    
+    Swal.fire({
+      title: 'กำลังบันทึกลงคลัง...',
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading()
+      }
+    });
+
+    const newSignatureObj = {
+      id: Date.now().toString(),
+      data: currentSignature
+    };
+    
+    const updatedSignatures = [...savedSignatures, newSignatureObj];
+    const success = await onUpdateSignatures(updatedSignatures); 
+    
+    if (success) {
+      Swal.fire({
+        icon: 'success',
+        title: 'บันทึกสำเร็จ!',
+        text: 'เพิ่มรูปลงในคลังลายเซ็นเรียบร้อยแล้ว',
+        timer: 1500,
+        showConfirmButton: false
+      });
+      setSignatureMode('saved');
+    } else {
+      Swal.fire({
+        icon: 'error',
+        title: 'บันทึกไม่สำเร็จ',
+        text: 'อาจเกิดข้อผิดพลาดในการเชื่อมต่อ กรุณาลองใหม่อีกครั้ง'
+      });
+    }
+  }
 
   const handleApproveClick = () => {
     if (!currentSignature) {
-      Swal.fire({ icon: 'warning', title: 'กรุณาลงลายมือชื่อ', confirmButtonColor: '#0f172a' })
+      Swal.fire({ icon: 'warning', title: 'กรุณาระบุลายมือชื่อ', confirmButtonColor: '#0f172a' })
       return
     }
-    onApprove(booking.id, booking.vehicle_id, selectedDriverId, currentSignature, saveToProfile)
+    onApprove(booking.id, booking.vehicle_id, selectedDriverId, currentSignature, null)
   }
 
-  // หาชื่อคนขับเพื่อส่งไปพรีวิว
   const selectedDriverName = availableDrivers.find(d => d.id === selectedDriverId)?.name || "";
   const vehiclePlate = booking.vehicles?.license_plate || "";
 
   return (
-    // ✅ 1. เพิ่ม overflow-hidden ที่กล่องแม่ เพื่อล็อคไม่ให้กล่องแม่ยืดทะลุจอ
     <div className="flex flex-col lg:flex-row gap-8 py-4 font-sarabun text-black bg-white h-full overflow-hidden">
-
+      
       {/* 🔴 ฝั่งซ้าย: เครื่องมืออนุมัติ */}
-      {/* ✅ 2. เพิ่ม h-full ให้ฝั่งซ้ายสูงเต็มที่ และใส่ overflow-y-auto ให้เลื่อนขึ้นลงได้ */}
       <div className="w-full lg:w-[400px] shrink-0 h-full space-y-6 overflow-y-auto pr-2 pb-10 scrollbar-hide">
-
         <div className="grid grid-cols-2 gap-4 bg-slate-900 p-6 rounded-[1.5rem] text-white shadow-lg shrink-0">
           <div className="space-y-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ผู้ขอใช้รถ / ตำแหน่ง</p>
@@ -226,46 +336,85 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
 
         {/* ลายเซ็นผู้อนุมัติ */}
         <div className="space-y-4 p-5 bg-slate-50 border border-slate-200 rounded-2xl">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-2">
-            <div className="flex items-center gap-2">
+          <div className="flex flex-col xl:flex-row xl:items-start justify-between gap-3 mb-2">
+            <div className="flex items-center gap-2 mt-2">
               <PenTool className="size-5 text-slate-700" />
               <h4 className="font-bold text-sm text-slate-700 uppercase tracking-wide">
                 2. ลงลายมือชื่อผู้อนุมัติ <span className="text-red-500">*</span>
               </h4>
             </div>
 
-            {hasSavedSignature && (
-              <div className="flex bg-slate-200/50 p-1 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setSignatureMode('saved')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${signatureMode === 'saved' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  <ImageIcon className="size-3 inline mr-1" /> ลายเซ็นที่บันทึกไว้
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setSignatureMode('draw')}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-md transition-all ${signatureMode === 'draw' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  <PenTool className="size-3 inline mr-1" /> วาดใหม่
-                </button>
-              </div>
-            )}
+            <div className="flex flex-wrap bg-slate-200/50 p-1 rounded-lg shrink-0 gap-1">
+              <button
+                type="button"
+                onClick={() => setSignatureMode('saved')}
+                className={`px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-md transition-all ${signatureMode === 'saved' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <ImageIcon className="size-3 inline mr-1" /> คลัง ({savedSignatures.length}/5)
+              </button>
+              <button
+                type="button"
+                onClick={() => setSignatureMode('draw')}
+                className={`px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-md transition-all ${signatureMode === 'draw' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <PenTool className="size-3 inline mr-1" /> วาดใหม่
+              </button>
+              <button
+                type="button"
+                onClick={() => setSignatureMode('upload')}
+                className={`px-3 py-1.5 text-[11px] sm:text-xs font-bold rounded-md transition-all ${signatureMode === 'upload' ? 'bg-white shadow-sm text-blue-600' : 'text-slate-500 hover:text-slate-700'}`}
+              >
+                <Upload className="size-3 inline mr-1" /> รูปภาพ
+              </button>
+            </div>
           </div>
 
-          {signatureMode === 'saved' ? (
-            <div className="border-2 border-dashed border-emerald-300 rounded-xl bg-emerald-50/30 flex flex-col items-center justify-center p-6 h-32 md:h-40 relative">
-              <div className="absolute top-3 right-3 text-emerald-600 flex items-center gap-1 text-xs font-bold bg-emerald-100 px-2 py-1 rounded-full">
-                <CheckCircle2 className="size-3" /> ใช้งานลายเซ็นเดิม
-              </div>
-              <img
-                src={userProfile.saved_signature}
-                alt="Saved Signature"
-                className="max-h-full max-w-full object-contain mix-blend-multiply"
-              />
+          {/* โหมด 1: คลังลายเซ็น */}
+          {signatureMode === 'saved' && (
+            <div className="space-y-3">
+              {savedSignatures.length === 0 ? (
+                <div className="text-center py-8 bg-white border border-dashed border-slate-300 rounded-xl text-slate-400">
+                  <p className="text-sm font-medium">ยังไม่มีลายเซ็นในคลัง</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
+                  {savedSignatures.map((sig, index) => (
+                    <div 
+                      key={sig.id} 
+                      onClick={() => setCurrentSignature(sig.data)}
+                      className={`relative border-2 rounded-xl p-2 cursor-pointer transition-all ${currentSignature === sig.data ? 'border-emerald-500 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white hover:border-blue-300'}`}
+                    >
+                      {currentSignature === sig.data && (
+                        <div className="absolute top-2 left-2 text-emerald-600">
+                          <CheckCircle2 className="size-4" />
+                        </div>
+                      )}
+                      
+                      <button 
+                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteSignature(sig.id); }}
+                        className="absolute top-2 right-2 text-slate-400 hover:text-red-500 hover:bg-red-50 bg-white shadow-sm border border-slate-100 rounded-full p-1.5 transition-colors z-20"
+                      >
+                        <Trash2 className="size-3.5" />
+                      </button>
+
+                      <div className="h-16 flex items-center justify-center mb-2 mt-4">
+                        <img src={sig.data} alt="signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                      </div>
+                      
+                      <div className="flex justify-center items-center px-1">
+                        <p className="text-[11px] font-semibold text-slate-600 truncate bg-white px-2 py-0.5 rounded-full border border-slate-100">
+                          ลายเซ็น {index + 1}
+                        </p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
-          ) : (
+          )}
+
+          {/* โหมด 2: วาดใหม่ */}
+          {signatureMode === 'draw' && (
             <div className="space-y-3">
               <div className="border-2 border-dashed border-slate-300 rounded-xl bg-white overflow-hidden cursor-crosshair relative">
                 <Button variant="ghost" size="sm" onClick={clearSignature} className="absolute top-2 right-2 text-slate-400 hover:text-red-600 h-7 text-xs bg-white/80 backdrop-blur z-10">
@@ -280,20 +429,73 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
               </div>
               <p className="text-[11px] text-slate-400 text-center">ใช้นิ้วหรือเมาส์วาดลายเซ็นลงในกรอบด้านบน</p>
 
-              <div className="flex items-center space-x-2 pt-1">
-                <input
-                  type="checkbox"
-                  id="save-signature"
-                  checked={saveToProfile}
-                  onChange={(e) => setSaveToProfile(e.target.checked)}
-                  className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500 cursor-pointer"
-                />
-                <Label htmlFor="save-signature" className="text-sm font-medium text-slate-600 cursor-pointer flex items-center gap-1.5">
-                  <Save className="size-4 text-blue-600" /> บันทึกลายเซ็นนี้ไว้ใช้ในครั้งต่อไปอัตโนมัติ
-                </Label>
+              <div className="pt-3 border-t border-slate-100 flex justify-center">
+                {canSaveMore ? (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-blue-700 border-blue-200 hover:bg-blue-50 bg-blue-50/50 shadow-sm rounded-xl h-9 px-4 transition-all"
+                    onClick={handleInstantSave}
+                    disabled={!hasDrawn}
+                  >
+                    <Save className="size-4 mr-2" /> บันทึกลายเซ็นนี้ลงคลัง
+                  </Button>
+                ) : (
+                  <p className="text-xs text-rose-500 font-semibold flex items-center gap-1">
+                    <Info className="size-3" /> คลังเก็บลายเซ็นเต็มแล้ว (สูงสุด 5 รายการ)
+                  </p>
+                )}
               </div>
             </div>
           )}
+
+          {/* โหมด 3: อัปโหลดรูปภาพ */}
+          {signatureMode === 'upload' && (
+            <div className="space-y-3">
+              <div className="border-2 border-dashed border-slate-300 rounded-xl bg-white overflow-hidden flex flex-col items-center justify-center p-2 h-32 md:h-40 relative group">
+                <label className="flex flex-col items-center justify-center w-full h-full cursor-pointer transition-colors rounded-xl relative">
+                  {currentSignature ? (
+                    <>
+                      <img src={currentSignature} alt="Uploaded" className="max-h-full max-w-full object-contain mix-blend-multiply" />
+                      <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl backdrop-blur-sm">
+                        <span className="text-white text-sm font-bold flex items-center gap-1">
+                          <Upload className="size-4"/> คลิกเพื่อเปลี่ยนรูป
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center text-slate-400 hover:text-blue-500 transition-colors w-full h-full bg-slate-50 hover:bg-blue-50 rounded-xl">
+                      <Upload className="size-8 mb-2" />
+                      <span className="text-sm font-bold">คลิกเพื่ออัปโหลดรูปลายเซ็น</span>
+                      <span className="text-[10px] mt-1">(รองรับ .PNG, .JPG)</span>
+                    </div>
+                  )}
+                  <input type="file" className="hidden" accept="image/png, image/jpeg, image/jpg" onChange={handleSignatureUpload} />
+                </label>
+              </div>
+              
+              <div className="pt-3 border-t border-slate-100 flex justify-center">
+                {canSaveMore ? (
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    size="sm" 
+                    className="text-blue-700 border-blue-200 hover:bg-blue-50 bg-blue-50/50 shadow-sm rounded-xl h-9 px-4 transition-all"
+                    onClick={handleInstantSave}
+                    disabled={!currentSignature || !currentSignature.startsWith('data:image')}
+                  >
+                    <Save className="size-4 mr-2" /> บันทึกรูปนี้ลงคลัง
+                  </Button>
+                ) : (
+                  <p className="text-xs text-rose-500 font-semibold text-center flex justify-center items-center gap-1">
+                    <Info className="size-3" /> คลังเก็บลายเซ็นของคุณเต็มแล้ว (สูงสุด 5 รายการ)
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
         </div>
 
         <div className="flex gap-4 pt-2">
@@ -314,8 +516,7 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
         </div>
       </div>
 
-      {/* ⚪ ฝั่งขวา: พรีวิวเอกสารแบบ ๓ ของจริง */}
-      {/* ✅ 3. ลบ max-h-[75vh] ออก และใส่ h-full เพื่อให้สูงเท่ากับฝั่งซ้ายเป๊ะๆ */}
+      {/* ⚪ ฝั่งขวา: พรีวิวเอกสาร */}
       <div className="flex-1 h-full bg-slate-100 rounded-3xl p-4 md:p-6 overflow-y-auto relative border border-slate-200 shadow-inner">
         <div className="flex items-center justify-between mb-4 sticky top-0 bg-slate-100/90 backdrop-blur-sm z-10 py-2">
           <h3 className="font-bold text-slate-700 flex items-center gap-2">
@@ -333,11 +534,10 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
             vehiclePlate={vehiclePlate}
             signatureImage={currentSignature}
             adminName={userProfile?.full_name || userProfile?.name} 
-            startMileage={booking.vehicles?.last_mileage}           
+            startMileage={booking.vehicles?.last_mileage}          
           />
         </div>
       </div>
-
     </div>
   )
 }
@@ -355,6 +555,18 @@ export default function ApprovalsPage() {
   useEffect(() => {
     fetchData()
     fetchDrivers()
+
+    // ✅ 1. เพิ่มระบบ Realtime Subscription (โหลดข้อมูลอัตโนมัติเมื่อมีคนขอจองใหม่)
+    const channel = supabase
+      .channel('public:bookings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+        fetchData() // รีเฟรชข้อมูลเมื่อมีการเปลี่ยนแปลงในฐานข้อมูล
+      })
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(channel)
+    }
   }, [])
 
   useEffect(() => {
@@ -369,7 +581,7 @@ export default function ApprovalsPage() {
   async function fetchData() {
     const { data: bData } = await supabase
       .from("bookings")
-      .select("*, vehicles(license_plate, brand, model, last_mileage)") // ✅ เพิ่ม last_mileage เข้าไปตรงนี้
+      .select("*, vehicles(license_plate, brand, model, last_mileage)") 
       .eq("status", "pending")
       .order("created_at", { ascending: true })
 
@@ -385,7 +597,22 @@ export default function ApprovalsPage() {
     setAvailableDrivers(data || [])
   }
 
-  async function approveBooking(id, vehicleId, driverId, signatureBase64, saveToProfile) {
+  async function handleUpdateSignatures(updatedSignatures) {
+    if (!user?.id) return false;
+    try {
+      const sigString = JSON.stringify(updatedSignatures);
+      const { error } = await supabase.from("profiles").update({ saved_signature: sigString }).eq("id", user.id);
+      if (error) throw error;
+      
+      setUserProfile(prev => ({ ...prev, saved_signature: sigString }));
+      return true;
+    } catch (e) {
+      console.error("Save Signature Error:", e);
+      return false;
+    }
+  }
+
+  async function approveBooking(id, vehicleId, driverId, signatureBase64, newSignatureObj) {
     if (!driverId) {
       Swal.fire({ icon: 'warning', title: 'กรุณาเลือกพนักงานขับรถ', confirmButtonColor: '#0f172a' });
       return;
@@ -404,16 +631,10 @@ export default function ApprovalsPage() {
 
       if (bookingError) throw bookingError;
 
-      if (saveToProfile && user?.id) {
-        await supabase.from("profiles").update({ saved_signature: signatureBase64 }).eq("id", user.id);
-        const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-        if (data) setUserProfile(data)
-      }
-
       if (vehicleId) await supabase.from("vehicles").update({ status: "in-use" }).eq("id", vehicleId);
       if (driverId) await supabase.from("drivers").update({ status: "busy" }).eq("id", driverId);
 
-      Swal.fire({ icon: 'success', title: 'อนุมัติสำเร็จ!', text: 'บันทึกลายเซ็นและมอบหมายงานเรียบร้อย', confirmButtonColor: '#0f172a' });
+      Swal.fire({ icon: 'success', title: 'อนุมัติสำเร็จ!', text: 'พิจารณาอนุมัติและมอบหมายงานเรียบร้อย', confirmButtonColor: '#0f172a' });
 
       fetchData();
       fetchDrivers();
@@ -447,14 +668,28 @@ export default function ApprovalsPage() {
 
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-2">
+          
           <div className="space-y-1">
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 italic">
-              พิจารณาคำขอใช้รถยนต์
-            </h1>
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 italic">
+                พิจารณาคำขอใช้รถยนต์
+              </h1>
+              {/* ✅ 2. ปุ่มกดรีเฟรชข้อมูลด้วยมือ (Manual Refresh) */}
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={fetchData} 
+                className="h-8 w-8 rounded-full border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                title="รีเฟรชข้อมูล"
+              >
+                <RefreshCw className="size-4" />
+              </Button>
+            </div>
             <p className="text-sm text-slate-500 font-medium">
               รายการรอตรวจเอกสาร: <span className="text-blue-600 font-bold">{bookings.length} รายการ</span>
             </p>
           </div>
+
         </div>
 
         {bookings.length === 0 ? (
@@ -474,12 +709,24 @@ export default function ApprovalsPage() {
       </div>
 
       <Dialog open={!!selectedBooking} onOpenChange={handleOpenChange}>
-        {/* ✅ ปรับความกว้าง Pop-up ให้รองรับ 2 ฝั่ง (max-w-[95vw] หรือ max-w-7xl) */}
         <DialogContent className="max-w-[98vw] lg:max-w-[1400px] p-0 overflow-hidden border-none rounded-[2.5rem] shadow-2xl bg-white max-h-[92vh] flex flex-col">
-          <DialogHeader className="p-6 bg-[#0f172a] text-white text-center shrink-0">
-            <DialogTitle className="text-2xl font-bold font-sarabun tracking-tight">
+          <DialogHeader className="p-6 bg-[#0f172a] text-white text-center shrink-0 relative flex flex-row items-center justify-center">
+            <DialogTitle className="text-2xl font-bold font-sarabun tracking-tight mx-auto">
               แบบฟอร์มตรวจสอบและพิจารณาอนุมัติ
             </DialogTitle>
+            
+            {/* ✅ 3. ซ่อน DialogDescription เพื่อแก้ Error สีเหลืองใน Console */}
+            <DialogDescription className="hidden">
+              รายละเอียดการตรวจสอบและอนุมัติคำขอใช้รถยนต์
+            </DialogDescription>
+            
+            <button
+              onClick={() => handleOpenChange(false)}
+              className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl transition-all font-bold"
+            >
+              <span className="text-sm hidden sm:inline">ปิดหน้าต่าง</span>
+              <X className="size-5" />
+            </button>
           </DialogHeader>
 
           <div className="px-6 pb-6 pt-2 overflow-y-auto flex-1 bg-white scrollbar-hide">
@@ -492,6 +739,7 @@ export default function ApprovalsPage() {
                 selectedDriverId={selectedDriverId}
                 setSelectedDriverId={setSelectedDriverId}
                 userProfile={userProfile}
+                onUpdateSignatures={handleUpdateSignatures} 
               />
             )}
           </div>
