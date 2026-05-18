@@ -4,7 +4,7 @@ import { useState, useEffect } from "react"
 import { 
   Plus, Search, Pencil, Trash2, Loader2, 
   UserCheck, Users, Car, UserMinus, Info, Link as LinkIcon,
-  UserCircle, CreditCard, Settings, AlertCircle, AlertTriangle // ✅ เพิ่มไอคอนแจ้งเตือน
+  UserCircle, CreditCard, Settings, AlertCircle, AlertTriangle 
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -36,6 +36,7 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth-context" // ✅ นำเข้า useAuth
 import Swal from 'sweetalert2'
 
 // แผนผังสถานะแบบมีจุดสี (Status Dots)
@@ -64,7 +65,7 @@ const formatThaiDate = (dateString) => {
   return new Intl.DateTimeFormat('th-TH', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 };
 
-// ✅ ฟังก์ชันเช็คสถานะวันหมดอายุใบขับขี่
+// ฟังก์ชันเช็คสถานะวันหมดอายุใบขับขี่
 const checkExpiryStatus = (dateString) => {
   if (!dateString) return { status: 'none', label: '-', color: 'text-slate-500' };
   
@@ -239,6 +240,9 @@ function DriverForm({ driver, users, onClose, onSave }) {
 }
 
 export default function DriversPage() {
+  const { user } = useAuth() // ✅ ดึงข้อมูลคนล็อกอิน
+  const [currentUserProfile, setCurrentUserProfile] = useState(null)
+  
   const [drivers, setDrivers] = useState([])
   const [users, setUsers] = useState([]) 
   const [loading, setLoading] = useState(true)
@@ -250,6 +254,16 @@ export default function DriversPage() {
     fetchDrivers()
     fetchUsers() 
   }, [])
+
+  // ✅ ดึงโปรไฟล์แอดมิน เพื่อเก็บชื่อลง Log
+  useEffect(() => {
+    async function fetchCurrentUserProfile() {
+      if (!user?.id) return;
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      if (data) setCurrentUserProfile(data)
+    }
+    fetchCurrentUserProfile()
+  }, [user])
 
   async function fetchDrivers() {
     setLoading(true)
@@ -270,11 +284,38 @@ export default function DriversPage() {
     if (!error) setUsers(data || [])
   }
 
+  // ✅ ฟังก์ชันเซฟพร้อมบันทึก Log
   async function saveDriver(data) {
     if (editDriver) {
-      await supabase.from("drivers").update(data).eq("id", editDriver.id)
+      // 📝 กรณีอัปเดตคนขับที่มีอยู่เดิม (UPDATE)
+      const oldData = drivers.find(d => d.id === editDriver.id)
+      const { error } = await supabase.from("drivers").update(data).eq("id", editDriver.id)
+      
+      if (!error && user) {
+        await supabase.from('audit_logs').insert([{
+          user_id: user.id,
+          user_name: currentUserProfile?.full_name || user.email,
+          action: 'UPDATE',
+          entity_type: 'drivers',
+          entity_id: String(editDriver.id),
+          old_data: oldData,
+          new_data: data
+        }]);
+      }
     } else {
-      await supabase.from("drivers").insert([data])
+      // 📝 กรณีเพิ่มคนขับใหม่ (CREATE)
+      const { data: newDriver, error } = await supabase.from("drivers").insert([data]).select().single()
+      
+      if (!error && user && newDriver) {
+        await supabase.from('audit_logs').insert([{
+          user_id: user.id,
+          user_name: currentUserProfile?.full_name || user.email,
+          action: 'CREATE',
+          entity_type: 'drivers',
+          entity_id: String(newDriver.id),
+          new_data: newDriver
+        }]);
+      }
     }
     fetchDrivers()
     setDialogOpen(false)
@@ -282,6 +323,7 @@ export default function DriversPage() {
     Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: 'บันทึกข้อมูลเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false })
   }
 
+  // ✅ ฟังก์ชันลบพร้อมบันทึก Log
   async function handleDelete(id) {
     const result = await Swal.fire({
       title: 'ยืนยันการลบ?',
@@ -294,8 +336,25 @@ export default function DriversPage() {
     })
 
     if (result.isConfirmed) {
+      // ดึงข้อมูลเก่าก่อนลบ
+      const oldData = drivers.find(d => d.id === id)
+      
       const { error } = await supabase.from("drivers").delete().eq("id", id)
-      if (!error) fetchDrivers()
+      if (!error) {
+        // 📝 บันทึก Log ว่าใครลบ ลบใครออก
+        if (user && oldData) {
+          await supabase.from('audit_logs').insert([{
+            user_id: user.id,
+            user_name: currentUserProfile?.full_name || user.email,
+            action: 'DELETE',
+            entity_type: 'drivers',
+            entity_id: String(id),
+            old_data: oldData
+          }]);
+        }
+        fetchDrivers()
+        Swal.fire({ icon: 'success', title: 'ลบข้อมูลสำเร็จ', timer: 1500, showConfirmButton: false })
+      }
     }
   }
 
@@ -310,10 +369,16 @@ export default function DriversPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sarabun text-black">
-      <PageHeader title="จัดการคนขับรถ" />
+    // ✅ เพิ่มพื้นหลังและ Overlay ให้เข้าธีม
+    <div className="min-h-screen bg-slate-50/50 font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+      
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      <div className="p-4 md:p-8 space-y-8">
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="จัดการคนขับรถ" />
+      </div>
+
+      <div className="p-4 md:p-8 space-y-8 relative z-10">
         
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
           <StatCard title="คนขับทั้งหมด" value={stats.total} icon={<Users className="size-6 text-blue-600" />} color="blue" />
@@ -323,8 +388,8 @@ export default function DriversPage() {
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">จัดการคนขับรถ</h1>
-            <p className="text-muted-foreground mt-1 font-medium">รายชื่อและสถานะความพร้อมของพนักงานขับรถ</p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">จัดการคนขับรถ</h1>
+            <p className="text-white/80 mt-1 font-medium">รายชื่อและสถานะความพร้อมของพนักงานขับรถ</p>
           </div>
 
           <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) setEditDriver(null); }}>
@@ -380,7 +445,7 @@ export default function DriversPage() {
                   <TableRow><TableCell colSpan={6} className="h-48 text-center text-muted-foreground"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600" />กำลังโหลดข้อมูล...</TableCell></TableRow>
                 ) : filtered.length > 0 ? filtered.map(driver => {
                   const status = statusMap[driver.status] || statusMap.inactive
-                  const expiryInfo = checkExpiryStatus(driver.license_expiry) // ✅ ดึงข้อมูลสถานะวันหมดอายุ
+                  const expiryInfo = checkExpiryStatus(driver.license_expiry) 
 
                   return (
                     <TableRow key={driver.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50 text-black">
@@ -401,13 +466,11 @@ export default function DriversPage() {
                         )}
                       </TableCell>
 
-                      {/* ✅ แสดงวันหมดอายุพร้อมแจ้งเตือน */}
                       <TableCell className="text-center">
                         <div className="flex flex-col items-center justify-center">
                           <span className={`font-bold text-xs ${expiryInfo.color}`}>
                             {formatThaiDate(driver.license_expiry)}
                           </span>
-                          {/* ถ้าหมดอายุหรือใกล้หมดอายุ ให้แสดง Badge แจ้งเตือนข้างใต้ */}
                           {expiryInfo.status !== 'valid' && expiryInfo.status !== 'none' && (
                             <span className={`text-[9px] font-bold ${expiryInfo.color} ${expiryInfo.bg} px-1.5 py-0.5 rounded mt-1 flex items-center`}>
                               {expiryInfo.icon} {expiryInfo.label}
@@ -455,9 +518,9 @@ export default function DriversPage() {
 
 function StatCard({ title, value, icon, color }) {
   const styles = {
-    blue: { bg: "bg-blue-50", text: "text-blue-600", border: "border-blue-200" },
-    emerald: { bg: "bg-emerald-50", text: "text-emerald-600", border: "border-emerald-200" },
-    amber: { bg: "bg-amber-50", text: "text-amber-600", border: "border-amber-200" },
+    blue: { bg: "bg-blue-50", border: "border-blue-200" },
+    emerald: { bg: "bg-emerald-50", border: "border-emerald-200" },
+    amber: { bg: "bg-amber-50", border: "border-amber-200" },
   }
   return (
     <Card className={`border ${styles[color].border} shadow-sm bg-white rounded-[2rem] text-black overflow-hidden hover:shadow-md transition-shadow`}>

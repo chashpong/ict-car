@@ -178,7 +178,7 @@ export default function RegisterPage() {
                       <User className="absolute left-3 top-3 size-4 text-white/50 group-focus-within:text-white transition-colors" />
                       <Input 
                         className="pl-10 bg-white/10 border-white/20 text-white placeholder:text-white/40 rounded-xl h-11 focus:bg-white/20"
-                        placeholder="นายสมชาย ใจดี"
+                        placeholder="กรุณากรอกชื่อ-นามสกุล"
                         value={formData.fullName}
                         onChange={(e) => setFormData({...formData, fullName: e.target.value})}
                         required
@@ -261,13 +261,13 @@ export default function RegisterPage() {
                     type="text"
                     maxLength={8}
                     className="bg-white/10 border-white/30 text-white text-center text-3xl tracking-[0.5em] font-mono rounded-2xl h-16 focus:bg-white/20"
-                    placeholder="------"
+                    placeholder="--------"
                     value={otp}
                     onChange={(e) => setOtp(e.target.value.replace(/[^0-9]/g, ''))} // บังคับกรอกแค่ตัวเลข
                     required
                   />
 
-                  <Button type="submit" disabled={isSubmitting || otp.length < 6} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg h-12 text-lg font-bold rounded-xl mt-2">
+                  <Button type="submit" disabled={isSubmitting || otp.length < 8} className="w-full bg-emerald-600 hover:bg-emerald-700 text-white shadow-lg h-12 text-lg font-bold rounded-xl mt-2">
                     {isSubmitting ? <Loader2 className="animate-spin mr-2" /> : <CheckCircle2 className="mr-2 size-5" />}
                     ยืนยันรหัส OTP
                   </Button>

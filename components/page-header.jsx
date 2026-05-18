@@ -16,6 +16,12 @@ export function PageHeader({ title, breadcrumbs, children }) {
   const { user } = useAuth()
   const role = user?.role ?? "user"
 
+  // ✅ กำหนดลิงก์หน้าหลักตามสิทธิ์ (Role-based Home Link)
+  let homeLink = "/bookings" // ค่าเริ่มต้นสำหรับผู้ใช้ทั่วไป
+  if (role === "admin") homeLink = "/"
+  else if (role === "approver") homeLink = "/approvals"
+  else if (role === "driver") homeLink = "/logbook"
+
   return (
     <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border bg-card px-4">
       <SidebarTrigger className="-ml-1" />
@@ -23,8 +29,10 @@ export function PageHeader({ title, breadcrumbs, children }) {
       <Breadcrumb className="flex-1">
         <BreadcrumbList>
           <BreadcrumbItem>
-            <BreadcrumbLink href="/">หน้าหลัก</BreadcrumbLink>
+            {/* 👇 เปลี่ยนจาก href="/" เป็น href={homeLink} */}
+            <BreadcrumbLink href={homeLink}>หน้าหลัก</BreadcrumbLink>
           </BreadcrumbItem>
+          
           {breadcrumbs?.map((crumb, i) => (
             <span key={i} className="contents">
               <BreadcrumbSeparator />
@@ -37,6 +45,7 @@ export function PageHeader({ title, breadcrumbs, children }) {
               </BreadcrumbItem>
             </span>
           ))}
+          
           {!breadcrumbs && (
             <>
               <BreadcrumbSeparator />
@@ -47,10 +56,11 @@ export function PageHeader({ title, breadcrumbs, children }) {
           )}
         </BreadcrumbList>
       </Breadcrumb>
+      
       <div className="flex items-center gap-3">
         {children}
         <span
-          className={`hidden items-center rounded-md px-2.5 py-1 text-[11px] font-medium sm:inline-flex ${getRoleBadgeColor(role)}`}
+          className={`hidden items-center rounded-md px-2.5 py-1 text-[11px] font-bold sm:inline-flex ${getRoleBadgeColor(role)}`}
         >
           {getRoleLabel(role)}
         </span>

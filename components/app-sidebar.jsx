@@ -14,6 +14,7 @@ import {
   BarChart3,
   Users,
   LogOut,
+  ShieldAlert // ✅ 1. นำเข้าไอคอน ShieldAlert สำหรับประวัติระบบ
 } from "lucide-react"
 import {
   Sidebar,
@@ -30,7 +31,7 @@ import {
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { useAuth, canAccessRoute, getRoleLabel, getRoleBadgeColor } from "@/lib/auth-context"
-import Swal from 'sweetalert2' // ✅ นำเข้า SweetAlert2 สำหรับทำตัวโหลด
+import Swal from 'sweetalert2'
 
 const mainNav = [
   { title: "แดชบอร์ด", href: "/", icon: LayoutDashboard },
@@ -46,6 +47,7 @@ const recordNav = [
   { title: "สมุดบันทึกการใช้รถ", href: "/logbook", icon: BookOpen },
   { title: "ซ่อมบำรุง", href: "/maintenance", icon: Wrench },
   { title: "รายงาน", href: "/reports", icon: BarChart3 },
+  { title: "ประวัติระบบ", href: "/logs", icon: ShieldAlert }, // ✅ 2. เพิ่มเมนู ประวัติระบบ (Logs)
 ]
 
 export function AppSidebar() {
@@ -55,20 +57,25 @@ export function AppSidebar() {
 
   const role = user?.role ?? "user"
 
-  // 👇 ซ่อน "แดชบอร์ด" จากทุกคน ยกเว้น Admin
+  // ซ่อนเมนูหลักตามสิทธิ์
   const filteredMainNav = mainNav.filter((item) => {
-    // 1. ถ้าไม่ใช่แอดมิน ให้ซ่อนปุ่ม แดชบอร์ด
     if (role !== "admin" && item.href === "/") {
       return false;
     }
-    // 2. ถ้าเป็นผู้ใช้ทั่วไป หรือ คนขับรถ ให้ซ่อนปุ่ม อนุมัติคำขอ
     if ((role === "user" || role === "driver") && item.href === "/approvals") {
       return false;
     }
     return canAccessRoute(role, item.href);
   });
 
-  const filteredRecordNav = recordNav.filter((item) => canAccessRoute(role, item.href))
+  // ✅ 3. ซ่อนเมนูบันทึกและรายงานตามสิทธิ์
+  const filteredRecordNav = recordNav.filter((item) => {
+    // กำหนดให้หน้า /logs เห็นได้เฉพาะ Admin เท่านั้น
+    if (item.href === "/logs" && role !== "admin") {
+      return false;
+    }
+    return canAccessRoute(role, item.href);
+  });
 
   const [mounted, setMounted] = useState(false)
   const [time, setTime] = useState(new Date())
@@ -82,7 +89,6 @@ export function AppSidebar() {
   const formattedTime = mounted ? time.toLocaleTimeString('th-TH', { hour12: false }) : "00:00:00"
   const formattedDate = mounted ? time.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : "-- -- ----"
 
-  // ✅ ปรับระบบ Logout ให้ใช้ Hard Reset เพื่อป้องกันอาการค้างหมุน
   async function handleLogout(e) {
     e.preventDefault();
 
@@ -98,8 +104,6 @@ export function AppSidebar() {
       reverseButtons: true
     }).then(async (result) => {
       if (result.isConfirmed) {
-
-        // 1. โชว์กล่อง Loading
         Swal.fire({
           title: 'กำลังออกจากระบบ...',
           allowOutsideClick: false,
@@ -108,15 +112,13 @@ export function AppSidebar() {
           }
         });
 
-        // 2. ทำการเคลียร์ข้อมูล
         try {
-          await logout(); // สั่งล้าง Session ใน Supabase
-          localStorage.clear(); // ล้างข้อมูลแคชที่อาจค้างในเครื่อง
+          await logout(); 
+          localStorage.clear(); 
           sessionStorage.clear();
         } catch (error) {
           console.error("Logout Error:", error);
         } finally {
-          // 3. เตะกลับไปหน้า Login แบบ Hard Reset (แก้ปัญหาค้าง 100%)
           window.location.href = "/login";
         }
       }
@@ -126,7 +128,6 @@ export function AppSidebar() {
   return (
     <Sidebar collapsible="icon" className="border-r-0">
       <SidebarHeader className="p-4">
-        {/* 👇 เปลี่ยนลิงก์โลโก้ให้ชี้ไปหน้าหลักของแต่ละสิทธิ์ */}
         <Link href={role === "driver" ? "/logbook" : (role === "user" ? "/bookings" : (role === "approver" ? "/approvals" : "/"))} className="flex items-center gap-3">
           <div className="flex size-10 items-center justify-center rounded-lg bg-transparent">
             <img

@@ -85,20 +85,20 @@ function DriverTodayJobs({ bookings, startTrip }) {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="px-2 pt-2">
-        <h2 className="text-xl font-extrabold text-slate-800 flex items-center gap-2">
-          <CalendarIcon className="size-6 text-blue-600" /> งานวันนี้ของคุณ
+        <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+          <CalendarIcon className="size-6 text-blue-400" /> งานวันนี้ของคุณ
         </h2>
-        <p className="text-sm text-slate-500 mt-1">รายการเดินทางที่ได้รับการอนุมัติและรอการดำเนินการ</p>
+        <p className="text-sm text-white/80 mt-1">รายการเดินทางที่ได้รับการอนุมัติและรอการดำเนินการ</p>
       </div>
 
       {bookings.length === 0 ? (
-        <Card className="border-dashed border-2 border-slate-200 bg-transparent shadow-none rounded-[2rem]">
+        <Card className="border-dashed border-2 border-white/20 bg-black/20 backdrop-blur-sm shadow-none rounded-[2rem]">
           <CardContent className="flex flex-col items-center justify-center py-20 text-center">
-            <div className="bg-slate-100 rounded-full p-6 mb-4">
-              <CheckCircle2 className="size-10 text-slate-300" />
+            <div className="bg-white/10 rounded-full p-6 mb-4">
+              <CheckCircle2 className="size-10 text-white/50" />
             </div>
-            <p className="text-slate-500 font-bold text-lg">ไม่มีงานค้างในวันนี้</p>
-            <p className="text-slate-400 text-sm mt-1">คุณสามารถพักผ่อนได้เลย หรือรอรับงานใหม่</p>
+            <p className="text-white font-bold text-lg">ไม่มีงานค้างในวันนี้</p>
+            <p className="text-white/60 text-sm mt-1">คุณสามารถพักผ่อนได้เลย หรือรอรับงานใหม่</p>
           </CardContent>
         </Card>
       ) : (
@@ -163,7 +163,7 @@ function DriverTodayJobs({ bookings, startTrip }) {
   )
 }
 
-function TripRecordForm({ booking }) {
+function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user และ profile เข้ามาด้วยเพื่อทำ Log
   const [isStarted, setIsStarted] = useState(false)
   const [days, setDays] = useState([])
   const [loading, setLoading] = useState(false)
@@ -228,7 +228,6 @@ function TripRecordForm({ booking }) {
     return data.publicUrl
   }
 
-  // ✅ แก้ไขส่วนบันทึกรายวัน (อัปเดต status งานเสมอ และยิงไปหน้าซ่อมบำรุงด้วยชื่อตารางและคอลัมน์ที่ถูกต้อง)
   async function saveDay(index) {
     setSavingIndex(index)
     const d = days[index]
@@ -254,9 +253,12 @@ function TripRecordForm({ booking }) {
       receipt_image: d.receipt_image
     }
 
-    const { error } = await supabase.from("logbooks").upsert(payload, { 
+    // 📝 ดึงข้อมูลเดิมมาเทียบ
+    const { data: oldLog } = await supabase.from("logbooks").select("*").eq('booking_id', booking.id).eq('log_date', d.date).single()
+
+    const { data: newLog, error } = await supabase.from("logbooks").upsert(payload, { 
       onConflict: 'booking_id, log_date' 
-    })
+    }).select().single()
 
     if (error) {
       Swal.fire('ข้อผิดพลาด', error.message, 'error')
@@ -264,11 +266,22 @@ function TripRecordForm({ booking }) {
       return
     }
 
-    // 🌟 หากบันทึกว่า "รถเสีย" ให้ยิงสถานะไปหน้าซ่อมบำรุง
+    // 📝 บันทึก Log การอัปเดตข้อมูลรายวัน
+    if (user && newLog) {
+       await supabase.from('audit_logs').insert([{
+         user_id: user.id,
+         user_name: userProfile?.full_name || user.email,
+         action: 'UPDATE',
+         entity_type: 'logbooks',
+         entity_id: String(newLog.id),
+         old_data: oldLog || null,
+         new_data: newLog
+       }]);
+    }
+
     if (d.status === "breakdown") {
       await supabase.from("vehicles").update({ status: "maintenance" }).eq("id", booking.vehicle_id)
       
-      // ✅ แก้ชื่อตารางเป็น 'maintenance' และจัดคอลัมน์ให้ตรงตามภาพของคุณ
       await supabase.from("maintenance").insert([{
         vehicle_id: booking.vehicle_id,
         vehicle_plate: booking.vehicles?.license_plate || "ไม่ทราบทะเบียน", 
@@ -294,7 +307,6 @@ function TripRecordForm({ booking }) {
       })
     }
 
-    // ✅ บังคับเปลี่ยนสถานะการจองเป็น started (กำลังทำงาน) เสมอเมื่อมีการกดบันทึก
     if (booking.status !== 'started') {
       await supabase.from("bookings").update({ status: "started" }).eq("id", booking.id)
     }
@@ -368,6 +380,19 @@ function TripRecordForm({ booking }) {
 
     await supabase.from("drivers").update({ status: "available" }).eq("id", booking.driver_id)
     await supabase.from("bookings").update({ status: "completed" }).eq("id", booking.id)
+
+    // 📝 บันทึก Log เมื่อจบทริป
+    if (user) {
+       await supabase.from('audit_logs').insert([{
+         user_id: user.id,
+         user_name: userProfile?.full_name || user.email,
+         action: 'UPDATE',
+         entity_type: 'bookings',
+         entity_id: String(booking.id),
+         old_data: { status: 'started' },
+         new_data: { status: 'completed' }
+       }]);
+    }
     
     Swal.fire('สำเร็จ', 'ส่งรายงานและสิ้นสุดการเดินทางเรียบร้อยแล้ว', 'success').then(() => {
       window.location.reload()
@@ -402,7 +427,7 @@ function TripRecordForm({ booking }) {
         </CardContent>
       </Card>
 
-      <div className="space-y-8 pl-2 md:pl-6 relative border-l-2 border-slate-200 ml-4 md:ml-6">
+      <div className="space-y-8 pl-2 md:pl-6 relative border-l-2 border-slate-200 ml-4 md:ml-6 bg-white/80 backdrop-blur-sm rounded-r-3xl py-4 pr-4">
         {isStarted && days.map((d, index) => (
           <div key={index} className="relative pl-6 md:pl-10 space-y-4">
             {/* Timeline Dot */}
@@ -430,10 +455,10 @@ function TripRecordForm({ booking }) {
                     setDays(newDays)
                   }}
                 >
-                  <SelectTrigger className="w-[130px] h-9 border-none bg-slate-100 rounded-lg font-bold focus:ring-0">
+                  <SelectTrigger className="w-[130px] h-9 border-none bg-slate-100 rounded-lg font-bold focus:ring-0 text-black">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="font-sarabun rounded-xl border-slate-200">
+                  <SelectContent className="font-sarabun rounded-xl border-slate-200 bg-white">
                     <SelectItem value="normal" className="font-bold text-slate-700">ปกติพร้อมใช้งาน</SelectItem>
                     <SelectItem value="breakdown" className="font-bold text-rose-600 focus:text-rose-700 focus:bg-rose-50">แจ้งรถเสีย</SelectItem>
                   </SelectContent>
@@ -525,7 +550,7 @@ function TripRecordForm({ booking }) {
                           newDays[index].note = e.target.value
                           setDays(newDays)
                         }}
-                        className="bg-white h-12 rounded-xl border-rose-200 focus-visible:ring-rose-500"
+                        className="bg-white h-12 rounded-xl border-rose-200 focus-visible:ring-rose-500 text-black"
                       />
                     </div>
                   </div>
@@ -545,7 +570,7 @@ function TripRecordForm({ booking }) {
                         type="number"
                         placeholder="0.00"
                         value={d.fuel_liter}
-                        className="h-12 rounded-xl border-slate-200 bg-white font-mono font-bold"
+                        className="h-12 rounded-xl border-slate-200 bg-white font-mono font-bold text-black"
                         onChange={(e) => {
                           const newDays = [...days]
                           newDays[index].fuel_liter = e.target.value
@@ -627,12 +652,19 @@ export default function LogbookPage() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   
   const { user } = useAuth()
+  const [userProfile, setUserProfile] = useState(null) // ✅ เก็บ profile
 
   useEffect(() => {
     if (user) {
       fetchBookings()
+      fetchUserProfile()
     }
   }, [user])
+
+  async function fetchUserProfile() {
+    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+    if (data) setUserProfile(data)
+  }
 
   async function fetchBookings() {
     let myDriverId = null;
@@ -681,6 +713,7 @@ export default function LogbookPage() {
 
     setBookings(data || [])
   }
+
   function startTrip(booking) {
     setSelectedBooking({
       ...booking,
@@ -690,20 +723,26 @@ export default function LogbookPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50">
-      <PageHeader title="สมุดบันทึกการใช้รถ" />
-      <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 max-w-5xl mx-auto w-full font-sarabun text-black">
+    <div className="min-h-screen bg-cover bg-center bg-no-repeat relative font-sarabun text-black" style={{ backgroundImage: "url('/images/image.png')" }}>
+      
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
+
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="สมุดบันทึกการใช้รถ" />
+      </div>
+
+      <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 max-w-5xl mx-auto w-full relative z-10">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">
             Logbook / สมุดลงเวลา
           </h1>
-          <p className="text-slate-500 font-medium">
+          <p className="text-white/80 font-medium">
             บันทึกเลขไมล์รถยนต์รายวัน, อัปโหลดภาพหน้าปัด และรายงานการเติมน้ำมัน
           </p>
         </div>
 
         <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-          <div className="bg-white p-1.5 rounded-2xl border border-slate-200 shadow-sm inline-block mb-6">
+          <div className="bg-white/90 p-1.5 rounded-2xl border border-white/20 shadow-sm inline-block mb-6 backdrop-blur-sm">
             <TabsList className="grid w-[350px] grid-cols-2 bg-transparent h-12">
               <TabsTrigger 
                 value="today" 
@@ -727,15 +766,15 @@ export default function LogbookPage() {
 
           <TabsContent value="record" className="mt-0 outline-none">
             {selectedBooking ? (
-              <TripRecordForm booking={selectedBooking} />
+              <TripRecordForm booking={selectedBooking} user={user} userProfile={userProfile} />
             ) : (
-              <Card className="border-dashed border-2 border-slate-200 bg-transparent shadow-none rounded-[2rem] mt-4">
+              <Card className="border-dashed border-2 border-white/20 bg-black/20 backdrop-blur-sm shadow-none rounded-[2rem] mt-4">
                 <CardContent className="flex flex-col items-center justify-center py-20 text-center">
-                  <div className="bg-slate-100 rounded-full p-6 mb-4">
-                    <FileImage className="size-10 text-slate-300" />
+                  <div className="bg-white/10 rounded-full p-6 mb-4">
+                    <FileImage className="size-10 text-white/50" />
                   </div>
-                  <p className="text-slate-500 font-bold text-lg">กรุณาเลือกงานจากแถบ "งานที่ได้รับมอบหมาย" ก่อน</p>
-                  <p className="text-slate-400 text-sm mt-1">เพื่อเริ่มบันทึกข้อมูลการเดินทางของคุณ</p>
+                  <p className="text-white font-bold text-lg">กรุณาเลือกงานจากแถบ "งานที่ได้รับมอบหมาย" ก่อน</p>
+                  <p className="text-white/60 text-sm mt-1">เพื่อเริ่มบันทึกข้อมูลการเดินทางของคุณ</p>
                 </CardContent>
               </Card>
             )}

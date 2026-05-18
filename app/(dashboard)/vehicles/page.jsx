@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import { 
   Plus, Search, Pencil, Trash2, Loader2, 
-  Car, Truck, Bus, Wrench, CheckCircle2, AlertCircle, // ✅ 1. เพิ่มนำเข้า Bus (แทน Fuel)
+  Car, Truck, Bus, Wrench, CheckCircle2, AlertCircle,
   Calendar as CalendarIcon, Info
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
@@ -36,6 +36,8 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
+import { useAuth } from "@/lib/auth-context" // ✅ นำเข้า useAuth
+import Swal from 'sweetalert2' // ✅ นำเข้า Swal
 
 const statusMap = {
   available: { 
@@ -55,11 +57,10 @@ const statusMap = {
   },
 }
 
-// ✅ 2. แก้ไขไอคอนรถตู้ให้ถูกต้อง
 const getTypeIcon = (type) => {
   switch (type) {
     case "กระบะ": return <Truck className="size-4" />;
-    case "ตู้": return <Bus className="size-4" />; // เปลี่ยนเป็นรูป Bus
+    case "ตู้": return <Bus className="size-4" />; 
     default: return <Car className="size-4" />;
   }
 }
@@ -90,51 +91,55 @@ function VehicleForm({ vehicle, onClose, onSave }) {
   }, [vehicle])
 
   return (
-    <div className="space-y-6 pt-2">
+    <div className="space-y-6 pt-2 font-sarabun text-black">
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label className="text-sm font-semibold">ทะเบียนรถ</Label>
+          <Label className="text-sm font-semibold text-slate-600">ทะเบียนรถ</Label>
           <Input 
             placeholder="เช่น พพ-9999"
             value={formData.license_plate}
             onChange={(e) => setFormData({ ...formData, license_plate: e.target.value })}
+            className="rounded-xl h-11"
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-sm font-semibold">ยี่ห้อ</Label>
+          <Label className="text-sm font-semibold text-slate-600">ยี่ห้อ</Label>
           <Input 
             placeholder="เช่น Toyota"
             value={formData.brand}
             onChange={(e) => setFormData({ ...formData, brand: e.target.value })}
+            className="rounded-xl h-11"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label className="text-sm font-semibold">รุ่น</Label>
+          <Label className="text-sm font-semibold text-slate-600">รุ่น</Label>
           <Input 
             placeholder="เช่น Corolla Cross"
             value={formData.model}
             onChange={(e) => setFormData({ ...formData, model: e.target.value })}
+            className="rounded-xl h-11"
           />
         </div>
         <div className="space-y-2">
-          <Label className="text-sm font-semibold">ปีจดทะเบียน</Label>
+          <Label className="text-sm font-semibold text-slate-600">ปีจดทะเบียน</Label>
           <Input 
             type="number"
             value={formData.year}
             onChange={(e) => setFormData({ ...formData, year: e.target.value })}
+            className="rounded-xl h-11"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
         <div className="space-y-2">
-          <Label className="text-sm font-semibold">ประเภทรถ</Label>
+          <Label className="text-sm font-semibold text-slate-600">ประเภทรถ</Label>
           <Select value={formData.type} onValueChange={(v) => setFormData({ ...formData, type: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
+            <SelectTrigger className="rounded-xl h-11 font-medium"><SelectValue /></SelectTrigger>
+            <SelectContent className="font-sarabun bg-white text-black">
               <SelectItem value="เก๋ง">รถเก๋ง</SelectItem>
               <SelectItem value="กระบะ">รถกระบะ</SelectItem>
               <SelectItem value="อเนกประสงค์">รถอเนกประสงค์ (SUV)</SelectItem>
@@ -143,35 +148,40 @@ function VehicleForm({ vehicle, onClose, onSave }) {
           </Select>
         </div>
         <div className="space-y-2">
-          <Label className="text-sm font-semibold">เลขไมล์เริ่มต้น (กม.)</Label>
+          <Label className="text-sm font-semibold text-slate-600">เลขไมล์เริ่มต้น (กม.)</Label>
           <Input 
             type="number"
             placeholder="เช่น 12500"
             value={formData.last_mileage}
             onChange={(e) => setFormData({ ...formData, last_mileage: e.target.value })}
+            className="rounded-xl h-11 font-mono"
           />
         </div>
       </div>
 
       <div className="grid grid-cols-1 gap-4">
         <div className="space-y-2">
-          <Label className="text-sm font-semibold">สถานะปัจจุบัน</Label>
+          <Label className="text-sm font-semibold text-slate-600">สถานะปัจจุบัน</Label>
           <Select value={formData.status} onValueChange={(v) => setFormData({ ...formData, status: v })}>
-            <SelectTrigger><SelectValue /></SelectTrigger>
-            <SelectContent>
-              <SelectItem value="available">ว่าง</SelectItem>
+            <SelectTrigger className="rounded-xl h-11 font-medium"><SelectValue /></SelectTrigger>
+            <SelectContent className="font-sarabun bg-white text-black">
+              <SelectItem value="available">ว่าง / พร้อมใช้งาน</SelectItem>
               <SelectItem value="in-use">กำลังใช้งาน</SelectItem>
-              <SelectItem value="maintenance">ซ่อมบำรุง</SelectItem>
+              <SelectItem value="maintenance">อยู่ระหว่างซ่อมบำรุง</SelectItem>
             </SelectContent>
           </Select>
         </div>
       </div>
 
-      <div className="flex justify-end gap-3 pt-4 border-t">
-        <Button variant="ghost" onClick={onClose} disabled={isSaving}>ยกเลิก</Button>
+      <div className="flex justify-end gap-3 pt-4 border-t border-slate-100">
+        <Button variant="ghost" onClick={onClose} disabled={isSaving} className="rounded-xl font-bold text-slate-500">ยกเลิก</Button>
         <Button 
-          className="min-w-[120px]" 
+          className="min-w-[120px] rounded-xl px-8 bg-[#0f172a] hover:bg-slate-800 text-white font-bold shadow-lg" 
           onClick={async () => {
+            if (!formData.license_plate) {
+              Swal.fire({ icon: 'warning', title: 'กรุณากรอกทะเบียนรถ', confirmButtonColor: '#0f172a' });
+              return;
+            }
             setIsSaving(true);
             await onSave(formData);
             setIsSaving(false);
@@ -187,12 +197,25 @@ function VehicleForm({ vehicle, onClose, onSave }) {
 }
 
 export default function VehiclesPage() {
+  const { user } = useAuth() // ✅ ดึงข้อมูลคนล็อกอิน
+  const [currentUserProfile, setCurrentUserProfile] = useState(null)
+
   const [vehicles, setVehicles] = useState([])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editVehicle, setEditVehicle] = useState(undefined)
   const [loading, setLoading] = useState(true)
+
+  // ✅ ดึงโปรไฟล์แอดมิน เพื่อเก็บชื่อลง Log
+  useEffect(() => {
+    async function fetchCurrentUserProfile() {
+      if (!user?.id) return;
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      if (data) setCurrentUserProfile(data)
+    }
+    fetchCurrentUserProfile()
+  }, [user])
 
   useEffect(() => { fetchVehicles() }, [])
 
@@ -203,20 +226,81 @@ export default function VehiclesPage() {
     setLoading(false)
   }
 
+  // ✅ ฟังก์ชันเซฟรถพร้อมบันทึก Log
   async function saveVehicle(data) {
     const payload = { ...data }
+    
     if (editVehicle) {
-      await supabase.from("vehicles").update(payload).eq("id", editVehicle.id)
+      // 📝 กรณีอัปเดตรถที่มีอยู่เดิม (UPDATE)
+      const oldData = vehicles.find(v => v.id === editVehicle.id)
+      const { error } = await supabase.from("vehicles").update(payload).eq("id", editVehicle.id)
+      
+      if (!error && user) {
+        await supabase.from('audit_logs').insert([{
+          user_id: user.id,
+          user_name: currentUserProfile?.full_name || user.email,
+          action: 'UPDATE',
+          entity_type: 'vehicles',
+          entity_id: String(editVehicle.id),
+          old_data: oldData,
+          new_data: payload
+        }]);
+      }
     } else {
-      await supabase.from("vehicles").insert([payload])
+      // 📝 กรณีเพิ่มรถใหม่ (CREATE)
+      const { data: newVehicle, error } = await supabase.from("vehicles").insert([payload]).select().single()
+      
+      if (!error && user && newVehicle) {
+        await supabase.from('audit_logs').insert([{
+          user_id: user.id,
+          user_name: currentUserProfile?.full_name || user.email,
+          action: 'CREATE',
+          entity_type: 'vehicles',
+          entity_id: String(newVehicle.id),
+          new_data: newVehicle
+        }]);
+      }
     }
-    fetchVehicles(); setDialogOpen(false)
+    
+    fetchVehicles(); 
+    setDialogOpen(false);
+    Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: 'บันทึกข้อมูลรถเรียบร้อย', timer: 1500, showConfirmButton: false });
   }
 
+  // ✅ ฟังก์ชันลบรถพร้อมบันทึก Log
   async function deleteVehicle(id) {
-    if (!confirm("ต้องการลบรถคันนี้ใช่ไหม?")) return
-    await supabase.from("vehicles").delete().eq("id", id)
-    fetchVehicles()
+    const result = await Swal.fire({
+      title: 'ยืนยันการลบ?',
+      text: "ต้องการลบรถคันนี้ออกจากระบบใช่หรือไม่?",
+      icon: 'warning',
+      showCancelButton: true,
+      confirmButtonColor: '#ef4444',
+      confirmButtonText: 'ยืนยัน',
+      cancelButtonText: 'ยกเลิก',
+    })
+
+    if (result.isConfirmed) {
+      // ดึงข้อมูลเก่าก่อนลบ
+      const oldData = vehicles.find(v => v.id === id)
+      
+      const { error } = await supabase.from("vehicles").delete().eq("id", id)
+      
+      if (!error) {
+        // 📝 บันทึก Log ว่าใครลบรถคันไหนออก
+        if (user && oldData) {
+          await supabase.from('audit_logs').insert([{
+            user_id: user.id,
+            user_name: currentUserProfile?.full_name || user.email,
+            action: 'DELETE',
+            entity_type: 'vehicles',
+            entity_id: String(id),
+            old_data: oldData
+          }]);
+        }
+        fetchVehicles()
+        Swal.fire({ icon: 'success', title: 'ลบข้อมูลสำเร็จ', timer: 1500, showConfirmButton: false })
+      }
+    }
   }
 
   const filtered = vehicles.filter((v) => {
@@ -234,75 +318,86 @@ export default function VehiclesPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sarabun text-black">
-      {/* ✅ 3. เพิ่ม PageHeader เพื่อให้แถบด้านบนแสดงผล */}
-      <PageHeader title="จัดการยานพาหนะ" />
+    // ✅ อัปเดตพื้นหลังให้เข้ากับธีม
+    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+      
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      {/* ✅ จัดระเบียบ padding มาไว้ที่เนื้อหาหลัก เพื่อไม่ให้กระทบ PageHeader */}
-      <div className="p-4 md:p-8 space-y-8">
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard title="รถทั้งหมด" value={stats.total} icon={<Car className="text-blue-600" />} color="blue" />
-          <StatCard title="ว่างพร้อมใช้" value={stats.available} icon={<CheckCircle2 className="text-emerald-600" />} color="emerald" />
-          <StatCard title="กำลังใช้งาน" value={stats.inUse} icon={<CalendarIcon className="text-amber-600" />} color="amber" />
-          <StatCard title="ซ่อมบำรุง" value={stats.maintenance} icon={<Wrench className="text-rose-600" />} color="rose" />
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="จัดการยานพาหนะ" />
+      </div>
+
+      <div className="p-4 md:p-8 space-y-8 relative z-10">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          <StatCard title="รถทั้งหมด" value={stats.total} icon={<Car className="size-6 text-blue-600" />} color="blue" />
+          <StatCard title="ว่างพร้อมใช้" value={stats.available} icon={<CheckCircle2 className="size-6 text-emerald-600" />} color="emerald" />
+          <StatCard title="กำลังใช้งาน" value={stats.inUse} icon={<CalendarIcon className="size-6 text-amber-600" />} color="amber" />
+          <StatCard title="ซ่อมบำรุง" value={stats.maintenance} icon={<Wrench className="size-6 text-rose-600" />} color="rose" />
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight">จัดการยานพาหนะ</h1>
-            <p className="text-muted-foreground">บริหารจัดการและติดตามสถานะรถยนต์ในระบบ</p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">จัดการยานพาหนะ</h1>
+            <p className="text-white/80 mt-1 font-medium">บริหารจัดการและติดตามสถานะรถยนต์ในระบบ</p>
           </div>
 
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditVehicle(undefined); }}>
             <DialogTrigger asChild>
-              <Button className="shadow-lg shadow-primary/20"><Plus className="mr-2 size-4" /> เพิ่มรถใหม่</Button>
+              <Button className="bg-[#0f172a] hover:bg-slate-800 shadow-md h-12 px-6 text-white font-bold rounded-2xl transition-transform hover:scale-[1.02]">
+                <Plus className="mr-2 size-5" /> เพิ่มรถใหม่
+              </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-[550px] rounded-2xl">
-              <DialogHeader>
-                <DialogTitle className="text-xl font-bold">{editVehicle ? "แก้ไขข้อมูลรถ" : "ลงทะเบียนรถใหม่"}</DialogTitle>
+            <DialogContent className="sm:max-w-[550px] rounded-[2.5rem] border-none bg-white text-black shadow-2xl p-0 overflow-hidden">
+              <DialogHeader className="p-6 bg-[#0f172a] text-white">
+                <DialogTitle className="text-xl font-bold flex items-center gap-2">
+                  {editVehicle ? <Pencil className="size-5" /> : <Plus className="size-5" />}
+                  {editVehicle ? "แก้ไขข้อมูลรถ" : "ลงทะเบียนรถใหม่"}
+                </DialogTitle>
                 <DialogDescription className="hidden">
                   แบบฟอร์มบันทึกหรือแก้ไขข้อมูลยานพาหนะ
                 </DialogDescription>
               </DialogHeader>
-              <VehicleForm vehicle={editVehicle} onClose={() => setDialogOpen(false)} onSave={saveVehicle} />
+              <div className="px-6 pb-6 pt-2 bg-slate-50/30">
+                <VehicleForm vehicle={editVehicle} onClose={() => setDialogOpen(false)} onSave={saveVehicle} />
+              </div>
             </DialogContent>
           </Dialog>
         </div>
 
-        <Card className="border-none shadow-sm overflow-hidden">
-          <CardHeader className="bg-white border-b">
+        <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
+          <CardHeader className="bg-white border-b py-5 px-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-              <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <input 
+              <div className="relative flex-1 max-w-md">
+                <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+                <Input 
                   placeholder="ค้นหาทะเบียน, ยี่ห้อ, รุ่นรถ..." 
                   value={search} 
                   onChange={(e) => setSearch(e.target.value)} 
-                  className="flex h-10 w-full rounded-md border border-input bg-slate-50 px-9 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 disabled:cursor-not-allowed disabled:opacity-50" 
+                  className="pl-11 h-12 rounded-2xl border-none shadow-sm focus:ring-2 focus:ring-blue-500 bg-slate-50 text-black" 
                 />
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-full sm:w-[200px] bg-slate-50 border-none">
+                <SelectTrigger className="w-full sm:w-[200px] h-12 rounded-2xl border-none shadow-sm bg-slate-50 font-bold text-slate-700">
                   <SelectValue placeholder="กรองตามสถานะ" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">ทั้งหมด</SelectItem>
-                  <SelectItem value="available">ว่าง</SelectItem>
+                <SelectContent className="font-sarabun bg-white text-black border-slate-200">
+                  <SelectItem value="all">สถานะทั้งหมด</SelectItem>
+                  <SelectItem value="available">ว่าง / พร้อมใช้งาน</SelectItem>
                   <SelectItem value="in-use">กำลังใช้งาน</SelectItem>
                   <SelectItem value="maintenance">ซ่อมบำรุง</SelectItem>
                 </SelectContent>
               </Select>
             </div>
           </CardHeader>
-          <CardContent className="p-0">
+          <CardContent className="p-0 overflow-x-auto">
             <Table>
               <TableHeader className="bg-slate-50/50">
-                <TableRow>
-                  <TableHead className="pl-6 font-bold uppercase text-[11px] tracking-wider">รายละเอียดรถ</TableHead>
-                  <TableHead className="hidden md:table-cell font-bold uppercase text-[11px] tracking-wider text-center">ประเภท</TableHead>
-                  <TableHead className="font-bold uppercase text-[11px] tracking-wider">สถานะ</TableHead>
-                  <TableHead className="hidden lg:table-cell font-bold uppercase text-[11px] tracking-wider">เลขไมล์ล่าสุด</TableHead>
-                  <TableHead className="text-right pr-6 font-bold uppercase text-[11px] tracking-wider">จัดการ</TableHead>
+                <TableRow className="border-b border-slate-100">
+                  <TableHead className="pl-6 py-5 font-bold uppercase text-[11px] tracking-wider text-slate-500">รายละเอียดรถ</TableHead>
+                  <TableHead className="hidden md:table-cell py-5 font-bold uppercase text-[11px] tracking-wider text-center text-slate-500">ประเภท</TableHead>
+                  <TableHead className="py-5 font-bold uppercase text-[11px] tracking-wider text-slate-500 text-center">สถานะ</TableHead>
+                  <TableHead className="hidden lg:table-cell py-5 font-bold uppercase text-[11px] tracking-wider text-center text-slate-500">เลขไมล์ล่าสุด</TableHead>
+                  <TableHead className="text-right pr-6 py-5 font-bold uppercase text-[11px] tracking-wider text-slate-500">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -310,44 +405,46 @@ export default function VehiclesPage() {
                   <TableRow>
                     <TableCell colSpan={5} className="h-40 text-center">
                       <Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />
-                      <p className="text-slate-400">กำลังโหลดข้อมูลยานพาหนะ...</p>
+                      <p className="text-slate-400 font-medium">กำลังโหลดข้อมูลยานพาหนะ...</p>
                     </TableCell>
                   </TableRow>
                 ) : filtered.length > 0 ? filtered.map((vehicle) => {
                   const status = statusMap[vehicle.status] || statusMap.available
                   return (
-                    <TableRow key={vehicle.id} className="hover:bg-slate-50/80 transition-colors">
+                    <TableRow key={vehicle.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
                       <TableCell className="pl-6 py-4">
                         <div className="flex flex-col">
-                          <span className="font-bold text-slate-900">{vehicle.license_plate}</span>
-                          <span className="text-xs text-muted-foreground">{vehicle.brand} {vehicle.model} ({vehicle.year})</span>
+                          <span className="font-extrabold text-slate-900 text-base">{vehicle.license_plate}</span>
+                          <span className="text-xs text-slate-500 font-medium">{vehicle.brand} {vehicle.model} ({vehicle.year})</span>
                         </div>
                       </TableCell>
                       <TableCell className="hidden md:table-cell text-center">
                          <div className="flex flex-col items-center gap-1">
-                            <div className="p-1.5 rounded-full bg-slate-100 text-slate-500">{getTypeIcon(vehicle.type)}</div>
-                            <span className="text-[10px] text-slate-500 font-medium">{vehicle.type}</span>
+                            <div className="p-2 rounded-full bg-slate-100 text-slate-600">{getTypeIcon(vehicle.type)}</div>
+                            <span className="text-[10px] text-slate-500 font-bold">{vehicle.type}</span>
                          </div>
                       </TableCell>
-                      <TableCell>
-                        <Badge variant="outline" className={`h-7 px-3 rounded-full border ${status.className} font-medium`}>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className={`h-7 px-3 rounded-full border ${status.className} font-bold text-[11px] shadow-sm`}>
                           <span className={`size-1.5 rounded-full mr-2 ${status.dot}`} />
                           {status.label}
                         </Badge>
                       </TableCell>
-                      <TableCell className="hidden lg:table-cell">
-                         <div className="flex items-center gap-2">
-                            <span className="font-mono text-slate-700 font-semibold">{(vehicle.last_mileage || 0).toLocaleString()}</span>
-                            <span className="text-xs text-muted-foreground font-medium uppercase tracking-tighter">กม.</span>
+                      <TableCell className="hidden lg:table-cell text-center">
+                         <div className="flex items-center justify-center gap-2">
+                            <span className="font-mono text-slate-700 font-bold bg-slate-50 px-3 py-1 rounded-lg border border-slate-100">
+                              {(vehicle.last_mileage || 0).toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">กม.</span>
                          </div>
                       </TableCell>
                       <TableCell className="text-right pr-6">
                         <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-blue-600 hover:bg-blue-50" 
+                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50" 
                             onClick={() => { setEditVehicle(vehicle); setDialogOpen(true); }}>
                             <Pencil className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8 text-slate-400 hover:text-rose-600 hover:bg-rose-50" 
+                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50" 
                             onClick={() => deleteVehicle(vehicle.id)}>
                             <Trash2 className="size-4" />
                           </Button>
@@ -357,9 +454,11 @@ export default function VehiclesPage() {
                   )
                 }) : (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-40 text-center text-muted-foreground">
-                      <Info className="mx-auto size-8 mb-2 opacity-20" />
-                      <p>ไม่พบข้อมูลรถที่ต้องการ</p>
+                    <TableCell colSpan={5} className="h-40 text-center text-slate-400">
+                      <div className="p-4 rounded-full bg-slate-50 w-fit mx-auto mb-3">
+                        <Info className="size-8 text-slate-300" />
+                      </div>
+                      <p className="font-bold">ไม่พบข้อมูลรถที่ค้นหา</p>
                     </TableCell>
                   </TableRow>
                 )}
@@ -373,19 +472,21 @@ export default function VehiclesPage() {
 }
 
 function StatCard({ title, value, icon, color }) {
-  const colors = {
-    blue: "border-l-blue-500",
-    emerald: "border-l-emerald-500",
-    amber: "border-l-amber-500",
-    rose: "border-l-rose-500",
+  const styles = {
+    blue: { bg: "bg-blue-50", border: "border-blue-200" },
+    emerald: { bg: "bg-emerald-50", border: "border-emerald-200" },
+    amber: { bg: "bg-amber-50", border: "border-amber-200" },
+    rose: { bg: "bg-rose-50", border: "border-rose-200" },
   }
   return (
-    <Card className={`border-none border-l-4 ${colors[color]} shadow-sm`}>
-      <CardContent className="p-4 flex items-center gap-4">
-        <div className="p-3 rounded-2xl bg-slate-100">{icon}</div>
+    <Card className={`border ${styles[color].border} shadow-sm bg-white rounded-[2rem] text-black hover:shadow-md transition-shadow`}>
+      <CardContent className="p-6 flex items-center gap-5">
+        <div className={`p-4 rounded-[1rem] ${styles[color].bg}`}>
+          {icon}
+        </div>
         <div>
-          <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{title}</p>
-          <p className="text-2xl font-bold">{value}</p>
+          <p className="text-[12px] font-bold text-slate-500 uppercase tracking-wider">{title}</p>
+          <p className="text-4xl font-extrabold text-slate-900 mt-1">{value}</p>
         </div>
       </CardContent>
     </Card>

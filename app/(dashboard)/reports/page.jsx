@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react"
 import { 
   FileText, FileSpreadsheet, Fuel, Route, 
-  Car, Calendar, Search, Droplet, Milestone
+  Car, Calendar, Search, Droplet, Milestone, 
+  Loader2, Info // ✅ เพิ่ม Loader2 และ Info เข้ามาตรงนี้ครับ
 } from "lucide-react"
 import {
   Bar,
@@ -292,7 +293,7 @@ export default function ReportsPage() {
             </CardContent>
           </Card>
 
-          {/* ✅ การ์ดปริมาณน้ำมันรวม (สีเขียว) แทนอัตราสิ้นเปลือง */}
+          {/* การ์ดปริมาณน้ำมันรวม (สีเขียว) แทนอัตราสิ้นเปลือง */}
           <Card className="border-none shadow-md bg-gradient-to-br from-emerald-400 to-emerald-600 text-white overflow-hidden relative rounded-[2rem]">
             <div className="absolute right-[-10px] bottom-[-10px] opacity-20"><Droplet className="size-32" /></div>
             <CardContent className="p-8 relative z-10">
@@ -415,7 +416,6 @@ export default function ReportsPage() {
                             </Badge>
                           </TableCell>
                           
-                          {/* ✅ ข้อมูลความละเอียดที่เพิ่มเข้ามาใหม่ */}
                           <TableCell className="text-center font-mono font-bold text-slate-500 text-xs">
                             {formatNumber(log.start_mileage || 0)}
                           </TableCell>

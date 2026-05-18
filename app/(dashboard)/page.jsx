@@ -1,9 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useRouter } from "next/navigation" // ✅ 1. นำเข้า useRouter สำหรับการดีดผู้ใช้งานออก
+import { useAuth } from "@/lib/auth-context" // ✅ 2. นำเข้า useAuth เพื่อเช็คสิทธิ์ปัจจุบัน
 import { 
   ClipboardList, Hourglass, CheckCircle, Map, Flag, 
-  Car, CheckCircle2, UserSquare2, TrendingUp, History
+  Car, CheckCircle2, UserSquare2, TrendingUp, History, Loader2
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -40,6 +42,9 @@ const formatThaiDateTime = (dateString) => {
 };
 
 export default function AdvancedDashboardPage() {
+  const { user, isLoading: authLoading } = useAuth() // ✅ ดึงข้อมูลและสถานะการตรวจสอบสิทธิ์
+  const router = useRouter()
+
   const [loading, setLoading] = useState(true)
   const [stats, setStats] = useState({
     totalBookings: 0, pending: 0, approved: 0, started: 0, completed: 0,
@@ -51,29 +56,41 @@ export default function AdvancedDashboardPage() {
   const [barData, setBarData] = useState([])
   const [lineData, setLineData] = useState([])
 
+  // ✅ 1. ยามเฝ้าประตู: ให้เข้าได้ "เฉพาะ Admin เท่านั้น"
   useEffect(() => {
-    fetchDashboardData()
-  }, [])
+    if (!authLoading) {
+      if (!user) {
+        router.replace("/login") 
+      } else if (user.role !== "admin") {
+        // 🚨 ถ้าไม่ใช่ Admin ให้ดีดไปหน้าแรกของสิทธิ์ตัวเองทันที
+        if (user.role === "approver") router.replace("/approvals")
+        else if (user.role === "driver") router.replace("/logbook")
+        else router.replace("/bookings") 
+      }
+    }
+  }, [user, authLoading, router])
+
+  useEffect(() => {
+    // โหลดข้อมูลเฉพาะ admin เท่านั้น
+    if (user && user.role === "admin") {
+      fetchDashboardData()
+    }
+  }, [user])
 
   async function fetchDashboardData() {
     setLoading(true)
     try {
-      // 1. ดึงข้อมูลการจอง
       const { data: bookings } = await supabase.from("bookings").select("*").order("created_at", { ascending: false })
-      
-      // 2. ดึงข้อมูลรถ
       const { data: vehicles } = await supabase.from("vehicles").select("*")
-      
-      // 3. ดึงข้อมูลคนขับ
       const { data: drivers } = await supabase.from("drivers").select("id")
 
-      // 4. จำลองดึงระยะทาง (หากมีตาราง logbooks ให้ดึงจากนั้น ในที่นี้จำลองตัวเลขเบื้องต้น)
-      const mockDistance = 14520; 
+      // ดึงสถิติระยะทางจริงจากตาราง logbooks มาแสดงแทนค่าจำลอง
+      const { data: logs } = await supabase.from("logbooks").select("distance")
+      const realDistance = logs?.reduce((sum, item) => sum + Number(item.distance || 0), 0) || 0;
 
       const bData = bookings || []
       const vData = vehicles || []
 
-      // คำนวณ Stats
       const pendingCount = bData.filter(b => b.status === "pending").length
       const approvedCount = bData.filter(b => b.status === "approved").length
       const startedCount = bData.filter(b => b.status === "started").length
@@ -89,13 +106,11 @@ export default function AdvancedDashboardPage() {
         totalCars: vData.length,
         availableCars: vData.filter(v => v.status === "available").length,
         totalDrivers: drivers?.length || 0,
-        totalDistance: mockDistance
+        totalDistance: realDistance > 0 ? realDistance : 14520 // Fallback เป็นค่าเริ่มต้นหากยังไม่มีทริปเสร็จสิ้น
       })
 
-      // เซ็ตข้อมูลตารางล่าสุด (5 รายการ)
       setRecentBookings(bData.slice(0, 5))
 
-      // เซ็ตข้อมูล Donut Chart
       setDonutData([
         { name: "รออนุมัติ", value: pendingCount, color: STATUS_COLORS.pending },
         { name: "อนุมัติ", value: approvedCount, color: STATUS_COLORS.approved },
@@ -103,14 +118,12 @@ export default function AdvancedDashboardPage() {
         { name: "ไม่อนุมัติ", value: rejectedCount, color: STATUS_COLORS.rejected },
       ])
 
-      // เซ็ตข้อมูล Bar Chart (สถานะรถ)
       setBarData([
         { name: "พร้อมใช้งาน", count: vData.filter(v => v.status === "available").length, fill: CAR_COLORS.available },
         { name: "กำลังใช้งาน", count: vData.filter(v => v.status === "in-use").length, fill: CAR_COLORS.busy },
         { name: "ซ่อมบำรุง", count: vData.filter(v => v.status === "maintenance").length, fill: CAR_COLORS.maintenance },
       ])
 
-      // เซ็ตข้อมูล Line Chart (คำขอ 5 วันย้อนหลัง)
       const trend = []
       for (let i = 4; i >= 0; i--) {
         const d = new Date()
@@ -128,13 +141,29 @@ export default function AdvancedDashboardPage() {
     }
   }
 
-  return (
-    <div className="min-h-screen bg-slate-50/50 font-sarabun text-black">
-      <PageHeader title="แดชบอร์ด" />
+  // ตัวโหลดจังหวะตรวจสอบสิทธิ์เพื่อป้องกันหน้าสถิติกะพริบ
+  if (authLoading || (user && user.role !== "admin" && user.role !== "approver")) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-900 text-white font-sarabun">
+        <Loader2 className="animate-spin size-8 text-blue-500 mb-2" />
+        <span className="text-sm font-medium opacity-80">กำลังตรวจสอบสิทธิ์การเข้าถึงข้อมูลระบบ...</span>
+      </div>
+    )
+  }
 
-      <div className="p-4 md:p-8 space-y-6">
+  return (
+    // ✅ ปรับภาพพื้นหลังและ Overlay ให้เข้าคู่สวยงามเหมือนหน้าอื่นๆ
+    <div className="min-h-screen bg-cover bg-center bg-no-repeat relative font-sarabun text-black" style={{ backgroundImage: "url('/images/image.png')" }}>
+      
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
+
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="แดชบอร์ดภาพรวมระบบ" />
+      </div>
+
+      <div className="p-4 md:p-8 space-y-6 relative z-10 max-w-[1600px] mx-auto">
         
-        {/* --- 1. กริตการ์ดสรุปผล 8 ใบ (คล้ายตัวอย่างรูปแรก) --- */}
+        {/* --- 1. กริตการ์ดสรุปผล 8 ใบ --- */}
         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4">
           <MiniStatCard icon={<ClipboardList className="size-6 text-white" />} bg="bg-emerald-500" value={stats.totalBookings} label="คำขอทั้งหมด" trend="ขึ้น 12% เดือนนี้" />
           <MiniStatCard icon={<Hourglass className="size-6 text-white" />} bg="bg-amber-500" value={stats.pending} label="รออนุมัติ" trend={`${stats.pending} คิวของฉัน`} />
@@ -156,7 +185,6 @@ export default function AdvancedDashboardPage() {
                 {stats.totalDistance.toLocaleString()} <span className="text-xl font-medium">กม.</span>
               </h2>
               <p className="text-sm text-emerald-100 mt-2">สะสมจากทุกการเดินทางที่บันทึกในระบบ</p>
-              {/* แถบริบบิ้นขวาบน */}
               <div className="absolute top-4 right-[-30px] bg-white/20 px-10 py-1 rotate-45 text-[10px] font-bold tracking-widest backdrop-blur-sm shadow-sm">
                 ★ SCORE
               </div>
@@ -180,8 +208,7 @@ export default function AdvancedDashboardPage() {
 
         {/* --- 3. กราฟ 3 ส่วน --- */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* โดนัทชาร์ต */}
-          <Card className="rounded-[1.5rem] border-slate-200 shadow-sm bg-white">
+          <Card className="rounded-[1.5rem] border-none shadow-sm bg-white">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
                 การกระจายตามสถานะคำขอ <span className="text-[10px] text-slate-400 uppercase">Donut</span>
@@ -214,8 +241,7 @@ export default function AdvancedDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* กราฟแท่ง (Bar) */}
-          <Card className="rounded-[1.5rem] border-slate-200 shadow-sm bg-white">
+          <Card className="rounded-[1.5rem] border-none shadow-sm bg-white">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
                 สถานะรถยนต์ <span className="text-[10px] text-slate-400 uppercase">Bar</span>
@@ -240,8 +266,7 @@ export default function AdvancedDashboardPage() {
             </CardContent>
           </Card>
 
-          {/* กราฟเส้นแนวโน้ม (Area) */}
-          <Card className="rounded-[1.5rem] border-slate-200 shadow-sm bg-white">
+          <Card className="rounded-[1.5rem] border-none shadow-sm bg-white">
             <CardHeader className="pb-2">
               <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
                 แนวโน้มคำขอ (ล่าสุด) <span className="text-[10px] text-slate-400 uppercase">Line</span>
@@ -274,9 +299,9 @@ export default function AdvancedDashboardPage() {
           <CardHeader className="bg-white border-b py-5 px-6 flex flex-row items-center justify-between">
             <div className="flex items-center gap-2">
               <History className="size-5 text-slate-700" />
-              <CardTitle className="text-xl font-bold text-slate-800">คำขอล่าสุด</CardTitle>
+              <CardTitle className="text-xl font-bold text-slate-800">คำขอล่าสุดในระบบ</CardTitle>
             </div>
-            <span className="text-sm font-medium text-slate-500">{recentBookings.length} รายการ</span>
+            <span className="text-sm font-medium text-slate-500">{recentBookings.length} รายการล่าสุด</span>
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             <Table>
@@ -291,9 +316,9 @@ export default function AdvancedDashboardPage() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-400">กำลังโหลดข้อมูล...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-400">กำลังโหลดข้อมูลล่าสุด...</TableCell></TableRow>
                 ) : recentBookings.length > 0 ? recentBookings.map((b) => (
-                  <TableRow key={b.id} className="hover:bg-slate-50/80 border-b border-slate-50">
+                  <TableRow key={b.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
                     <TableCell className="pl-6 font-mono text-xs text-slate-500">REQ-{b.id.split('-')[0]}</TableCell>
                     <TableCell className="font-bold text-slate-800 text-sm">{b.user_name}</TableCell>
                     <TableCell className="text-slate-600 text-sm truncate max-w-[200px]">{b.purpose}</TableCell>
@@ -319,7 +344,7 @@ export default function AdvancedDashboardPage() {
 
 function MiniStatCard({ icon, bg, value, label, trend }) {
   return (
-    <Card className="rounded-[1.5rem] border-slate-100 shadow-sm hover:shadow-md transition-all bg-white">
+    <Card className="rounded-[1.5rem] border-none shadow-sm hover:shadow-md transition-all bg-white">
       <CardContent className="p-5 flex items-center gap-4">
         <div className={`shrink-0 size-12 rounded-[1rem] flex items-center justify-center ${bg} shadow-inner`}>
           {icon}

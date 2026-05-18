@@ -135,17 +135,17 @@ export function useAuth() {
 
 /**
  * ✅ แก้ไขส่วนการเข้าถึงเมนู (Access Control)
- * เพิ่ม /history ให้ admin และ approver
+ * เพิ่ม /logs ให้ admin สามารถเข้าถึงได้
  */
 const ROLE_MENU_ACCESS = {
-  // admin เข้าถึงได้ทุกหน้า รวมประวัติ
-  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports"],
+  // admin เข้าถึงได้ทุกหน้า
+  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs"],
   
-  // ผู้อนุมัติ เข้าถึงหน้าจอง, อนุมัติ, รายงาน และประวัติ
-  approver: ["/", "/bookings", "/approvals", "/history", "/reports"],
+  // ✅ เอา "/" ออกจาก approver เพื่อไม่ให้ระบบอนุญาตให้เข้าหน้าหลัก
+  approver: ["/bookings", "/approvals", "/history", "/reports"],
   
-  driver: ["/", "/logbook"],
-  user: ["/", "/bookings"],
+  driver: ["/logbook"],
+  user: ["/bookings"],
 }
 
 export function canAccessRoute(role, route) {

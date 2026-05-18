@@ -630,6 +630,19 @@ export default function ApprovalsPage() {
 
       if (bookingError) throw bookingError;
 
+      // ✅ เพิ่มการบันทึก Log สำหรับการอนุมัติ (APPROVE)
+      if (user) {
+        await supabase.from('audit_logs').insert([{
+          user_id: user.id,
+          user_name: userProfile?.full_name || user.email,
+          action: 'APPROVE',
+          entity_type: 'bookings',
+          entity_id: String(id),
+          old_data: { status: 'pending' },
+          new_data: { status: 'approved', driver_id: driverId, vehicle_id: vehicleId }
+        }]);
+      }
+
       if (vehicleId) await supabase.from("vehicles").update({ status: "in-use" }).eq("id", vehicleId);
       if (driverId) await supabase.from("drivers").update({ status: "busy" }).eq("id", driverId);
 
@@ -648,7 +661,21 @@ export default function ApprovalsPage() {
 
   async function rejectBooking(id) {
     const { error } = await supabase.from("bookings").update({ status: "rejected" }).eq("id", id)
+    
     if (!error) {
+      // ✅ เพิ่มการบันทึก Log สำหรับการปฏิเสธ (REJECT)
+      if (user) {
+        await supabase.from('audit_logs').insert([{
+          user_id: user.id,
+          user_name: userProfile?.full_name || user.email,
+          action: 'REJECT',
+          entity_type: 'bookings',
+          entity_id: String(id),
+          old_data: { status: 'pending' },
+          new_data: { status: 'rejected' }
+        }]);
+      }
+
       Swal.fire({ icon: 'info', title: 'ดำเนินการแล้ว', text: 'ปฏิเสธคำขอจองเรียบร้อย', confirmButtonColor: '#0f172a' });
       fetchData(); setSelectedBooking(null);
     }
@@ -662,13 +689,10 @@ export default function ApprovalsPage() {
   }
 
   return (
-    // ✅ 1. เพิ่มโค้ดใส่รูปพื้นหลัง และ Overlay สีดำโปร่งแสงที่ div นอกสุด
     <div className="font-sarabun text-black min-h-screen bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
       
-      {/* 👇 เพิ่ม Overlay สีดำกึ่งโปร่งใสเหนือรูปภาพ */}
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      {/* ✅ PageHeader ให้อยู่เหนือ Overlay */}
       <div className="relative z-10 border-b border-white/10">
         <PageHeader title="การพิจารณาอนุมัติ" />
       </div>
@@ -678,7 +702,6 @@ export default function ApprovalsPage() {
           
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              {/* ✅ 2. ลบคลาส italic ออก และเปลี่ยนสีข้อความเป็น text-white */}
               <h1 className="text-3xl font-extrabold tracking-tight text-white">
                 พิจารณาคำขอใช้รถยนต์
               </h1>
@@ -692,7 +715,6 @@ export default function ApprovalsPage() {
                 <RefreshCw className="size-4" />
               </Button>
             </div>
-            {/* ✅ 3. เปลี่ยนสีข้อความสถานะให้เข้ากับพื้นหลัง */}
             <p className="text-sm text-white/80 font-medium mt-1">
               รายการรอตรวจเอกสาร: <span className="text-blue-400 font-bold">{bookings.length} รายการ</span>
             </p>

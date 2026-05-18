@@ -104,7 +104,7 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
   }
 
   return (
-    <div className="flex flex-col gap-4 font-sarabun mt-2">
+    <div className="flex flex-col gap-4 font-sarabun mt-2 text-black">
       <div className="flex flex-col gap-2">
         <Label className="font-bold">เลือกรถ</Label>
         <Select
@@ -119,10 +119,10 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
           }}
           disabled={!!record} 
         >
-          <SelectTrigger className="rounded-xl h-11">
+          <SelectTrigger className="rounded-xl h-11 bg-white text-black">
             <SelectValue placeholder={vehicles.length === 0 ? "กำลังโหลดรถ..." : "เลือกรถ"} />
           </SelectTrigger>
-          <SelectContent className="font-sarabun max-h-[200px]">
+          <SelectContent className="font-sarabun max-h-[200px] bg-white text-black">
             {vehicles.length === 0 ? (
                <SelectItem value="empty" disabled>ไม่พบข้อมูลรถ</SelectItem>
             ) : (
@@ -149,10 +149,10 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
               })
             }
           >
-            <SelectTrigger className="rounded-xl h-11">
+            <SelectTrigger className="rounded-xl h-11 bg-white text-black">
               <SelectValue placeholder="เลือกประเภท" />
             </SelectTrigger>
-            <SelectContent className="font-sarabun">
+            <SelectContent className="font-sarabun bg-white text-black">
               {repairTypeOptions.map((type, idx) => (
                 <SelectItem key={idx} value={type === "อื่นๆ" ? "other" : type}>{type}</SelectItem>
               ))}
@@ -161,7 +161,7 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
 
           {formData.type === "other" && (
             <Input
-              className="mt-2 rounded-xl h-11"
+              className="mt-2 rounded-xl h-11 bg-white"
               placeholder="ระบุประเภทการซ่อม"
               value={formData.customType}
               onChange={(e) => setFormData({ ...formData, customType: e.target.value })}
@@ -173,7 +173,7 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
           <Label className="font-bold">วันที่</Label>
           <Input
             type="date"
-            className="rounded-xl h-11"
+            className="rounded-xl h-11 bg-white text-black"
             value={formData.date}
             onChange={(e) => setFormData({ ...formData, date: e.target.value })}
           />
@@ -186,7 +186,7 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
           <Input
             type="number"
             placeholder="0"
-            className="rounded-xl h-11 font-mono font-bold text-amber-600 focus-visible:ring-amber-500"
+            className="rounded-xl h-11 font-mono font-bold bg-white text-amber-600 focus-visible:ring-amber-500"
             value={formData.cost}
             onChange={(e) => setFormData({ ...formData, cost: e.target.value })}
           />
@@ -196,7 +196,7 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
           <Label className="font-bold text-slate-500">กำหนดครั้งถัดไป</Label>
           <Input
             type="date"
-            className="rounded-xl h-11 text-slate-500"
+            className="rounded-xl h-11 bg-white text-slate-500"
             value={formData.next_due}
             onChange={(e) => setFormData({ ...formData, next_due: e.target.value })}
           />
@@ -207,7 +207,7 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
         <Label className="font-bold">รายละเอียด / อาการ</Label>
         <Textarea
           placeholder="รายละเอียดการซ่อมบำรุง หรือ อาการที่พบ"
-          className="rounded-xl"
+          className="rounded-xl bg-white text-black"
           rows={3}
           value={formData.description}
           onChange={(e) => setFormData({ ...formData, description: e.target.value })}
@@ -218,7 +218,7 @@ function AddMaintenanceForm({ record, onClose, onSave, vehicles, isSaving }) {
         <Button variant="ghost" onClick={onClose} disabled={isSaving} className="rounded-xl font-bold text-slate-500">
           ยกเลิก
         </Button>
-        <Button onClick={handleSubmit} disabled={isSaving} className="rounded-xl px-8 bg-blue-600 hover:bg-blue-700 font-bold shadow-md">
+        <Button onClick={handleSubmit} disabled={isSaving} className="rounded-xl px-8 bg-blue-600 hover:bg-blue-700 text-white font-bold shadow-md">
           {isSaving ? <><Loader2 className="mr-2 size-4 animate-spin" /> กำลังบันทึก...</> : "บันทึกข้อมูล"}
         </Button>
       </div>
@@ -234,12 +234,24 @@ export default function MaintenancePage() {
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [editRecord, setEditRecord] = useState(null) 
+  const [userProfile, setUserProfile] = useState(null) // ✅ เก็บข้อมูล Profile
 
   const { user } = useAuth()
 
+  useEffect(() => {
+    // ✅ ดึงชื่อของแอดมิน เพื่อเอาไปลง Log
+    async function fetchUserProfile() {
+      if (!user?.id) return;
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      if (data) setUserProfile(data)
+    }
+    fetchUserProfile()
+    fetchData()
+  }, [user])
+
   if (!user || user.role !== "admin") {
     return (
-      <div className="flex h-[80vh] flex-col items-center justify-center text-center">
+      <div className="flex h-[80vh] flex-col items-center justify-center text-center font-sarabun">
         <div className="rounded-full bg-red-100 p-6 mb-4">
           <Wrench className="size-12 text-red-600" />
         </div>
@@ -248,10 +260,6 @@ export default function MaintenancePage() {
       </div>
     )
   }
-
-  useEffect(() => {
-    fetchData()
-  }, [])
 
   async function fetchData() {
     try {
@@ -288,6 +296,8 @@ export default function MaintenancePage() {
       };
 
       if (payload.id) {
+        // 📝 กรณีอัปเดตรายการซ่อมเดิม
+        const oldData = maintenanceRecords.find(m => m.id === payload.id);
         const { data, error: updateError } = await supabase
           .from('maintenance')
           .update(dataToSave)
@@ -295,20 +305,46 @@ export default function MaintenancePage() {
           .select(); 
         
         if (updateError) throw updateError;
-        
         if (!data || data.length === 0) {
           throw new Error("อัปเดตไม่ได้! ตาราง maintenance ใน Supabase ปิดกั้นสิทธิ์ UPDATE (RLS Policy)");
+        }
+
+        // บันทึก Log การอัปเดต
+        if (user) {
+          await supabase.from('audit_logs').insert([{
+            user_id: user.id,
+            user_name: userProfile?.full_name || user.email,
+            action: 'UPDATE',
+            entity_type: 'maintenance',
+            entity_id: String(payload.id),
+            old_data: oldData,
+            new_data: dataToSave
+          }]);
         }
 
         Swal.fire({ icon: 'success', title: 'อัปเดตสำเร็จ', timer: 1500, showConfirmButton: false });
       
       } else {
-        const { error: insertError } = await supabase.from('maintenance').insert([dataToSave]);
+        // 📝 กรณีเพิ่มรายการซ่อมใหม่
+        const { data: insertedData, error: insertError } = await supabase.from('maintenance').insert([dataToSave]).select().single();
         if (insertError) throw insertError;
 
+        // อัปเดตสถานะรถเป็น ซ่อมบำรุง
         await supabase.from('vehicles')
           .update({ status: 'maintenance' })
           .eq('id', payload.vehicle_id);
+
+        // บันทึก Log การสร้าง
+        if (user && insertedData) {
+          await supabase.from('audit_logs').insert([{
+            user_id: user.id,
+            user_name: userProfile?.full_name || user.email,
+            action: 'CREATE',
+            entity_type: 'maintenance',
+            entity_id: String(insertedData.id),
+            new_data: insertedData
+          }]);
+        }
 
         Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', text: 'เพิ่มประวัติและเปลี่ยนสถานะรถเป็น "ซ่อมบำรุง" แล้ว', timer: 2000, showConfirmButton: false });
       }
@@ -344,6 +380,19 @@ export default function MaintenancePage() {
             
           if (error) throw error;
           
+          // 📝 บันทึก Log ว่ารถซ่อมเสร็จแล้ว (อัปเดตสถานะรถ)
+          if (user) {
+            await supabase.from('audit_logs').insert([{
+              user_id: user.id,
+              user_name: userProfile?.full_name || user.email,
+              action: 'UPDATE',
+              entity_type: 'vehicles',
+              entity_id: String(vehicleId),
+              old_data: { status: 'maintenance' },
+              new_data: { status: 'available' }
+            }]);
+          }
+
           Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: `เปลี่ยนสถานะรถ ${plate} เป็นว่างพร้อมใช้แล้ว`, timer: 2000, showConfirmButton: false });
           fetchData(); 
         } catch (error) {
@@ -376,19 +425,25 @@ export default function MaintenancePage() {
   }, [vehicles])
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sarabun text-black">
-      <PageHeader title="ซ่อมบำรุง" />
+    // ✅ อัปเดตพื้นหลังของหน้าซ่อมบำรุง ให้เป็น Theme เดียวกัน
+    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+      
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 max-w-7xl mx-auto">
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="ซ่อมบำรุง" />
+      </div>
+
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 max-w-7xl mx-auto relative z-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-extrabold text-slate-900 tracking-tight">ระบบซ่อมบำรุง</h1>
-            <p className="text-sm font-medium text-slate-500 mt-1">บันทึกประวัติ อัปเดตค่าใช้จ่าย และจัดการรถเสีย</p>
+            <h1 className="text-3xl font-extrabold text-white tracking-tight">ระบบซ่อมบำรุง</h1>
+            <p className="text-sm font-medium text-white/80 mt-1">บันทึกประวัติ อัปเดตค่าใช้จ่าย และจัดการรถเสีย</p>
           </div>
 
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if(!open) setEditRecord(null); }}>
             <DialogTrigger asChild>
-              <Button className="h-11 rounded-xl px-6 font-bold shadow-md bg-blue-700 hover:bg-blue-800 text-white">
+              <Button className="h-11 rounded-2xl px-6 font-bold shadow-lg bg-blue-600 hover:bg-blue-700 text-white transition-all hover:scale-[1.02]">
                 <Plus className="mr-2 size-4" />
                 เพิ่มรายการซ่อม
               </Button>
@@ -405,7 +460,7 @@ export default function MaintenancePage() {
                 </DialogDescription>
               </DialogHeader>
 
-              <div className="px-6 pb-6">
+              <div className="px-6 pb-6 pt-2 bg-slate-50/50">
                 <AddMaintenanceForm
                   record={editRecord} 
                   vehicles={vehicles}
@@ -419,42 +474,42 @@ export default function MaintenancePage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <Card className="border-none shadow-sm rounded-2xl bg-white border-l-4 border-l-blue-500">
+          <Card className="border-none shadow-sm rounded-3xl bg-white border-l-4 border-l-blue-500 overflow-hidden">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
                 <Wrench className="size-6" />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">รายการซ่อมทั้งหมด</p>
-                <p className="text-2xl font-extrabold text-slate-900 leading-none mt-1">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">รายการซ่อมทั้งหมด</p>
+                <p className="text-3xl font-extrabold text-slate-900 leading-none mt-1">
                   {maintenanceRecords.length} <span className="text-sm font-medium text-slate-500">รายการ</span>
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-sm rounded-2xl bg-white border-l-4 border-l-rose-500">
+          <Card className="border-none shadow-sm rounded-3xl bg-white border-l-4 border-l-rose-500 overflow-hidden">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
                 <CalendarClock className="size-6" />
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">รถรอซ่อม</p>
-                <p className="text-2xl font-extrabold text-slate-900 leading-none mt-1">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">รถรอซ่อม</p>
+                <p className="text-3xl font-extrabold text-slate-900 leading-none mt-1">
                   {maintenanceVehicleCount} <span className="text-sm font-medium text-slate-500">คัน</span>
                 </p>
               </div>
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-sm rounded-2xl bg-white border-l-4 border-l-amber-500">
+          <Card className="border-none shadow-sm rounded-3xl bg-white border-l-4 border-l-amber-500 overflow-hidden">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
-                <span className="text-lg font-extrabold">฿</span>
+                <span className="text-xl font-extrabold">฿</span>
               </div>
               <div>
-                <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">ค่าใช้จ่ายรวม</p>
-                <p className="text-2xl font-extrabold text-slate-900 leading-none mt-1">
+                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">ค่าใช้จ่ายรวม</p>
+                <p className="text-3xl font-extrabold text-slate-900 leading-none mt-1">
                   {totalCost.toLocaleString()} <span className="text-sm font-medium text-slate-500">บาท</span>
                 </p>
               </div>
@@ -462,7 +517,7 @@ export default function MaintenancePage() {
           </Card>
         </div>
 
-        <Card className="border-none shadow-sm rounded-3xl bg-white overflow-hidden">
+        <Card className="border-none shadow-sm rounded-[2rem] bg-white overflow-hidden">
           <CardHeader className="bg-white border-b py-5 px-6">
             <div className="relative max-w-md">
               <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -470,32 +525,28 @@ export default function MaintenancePage() {
                 placeholder="ค้นหาทะเบียนรถ, อาการ, ประเภทการซ่อม..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-11 h-12 rounded-xl bg-slate-50 border-slate-200 focus-visible:ring-blue-500"
+                className="pl-11 h-12 rounded-xl bg-slate-50 border-none shadow-sm text-black focus-visible:ring-blue-500"
               />
             </div>
           </CardHeader>
 
           <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50/50 border-b border-slate-100">
-                <TableRow>
-                  <TableHead className="pl-6 font-bold uppercase text-[11px] text-slate-500 tracking-wider py-4">รถ</TableHead>
-                  <TableHead className="font-bold uppercase text-[11px] text-slate-500 tracking-wider">ประเภทซ่อม/ปัญหา</TableHead>
-                  <TableHead className="hidden sm:table-cell font-bold uppercase text-[11px] text-slate-500 tracking-wider">วันที่</TableHead>
-                  
-                  {/* ✅ เพิ่มหัวคอลัมน์ ครั้งถัดไป */}
-                  <TableHead className="hidden md:table-cell font-bold uppercase text-[11px] text-slate-500 tracking-wider">ครั้งถัดไป</TableHead>
-                  
-                  <TableHead className="font-bold uppercase text-[11px] text-slate-500 tracking-wider">ค่าใช้จ่าย</TableHead>
-                  <TableHead className="hidden lg:table-cell font-bold uppercase text-[11px] text-slate-500 tracking-wider">รายละเอียด</TableHead>
-                  <TableHead className="text-right pr-6 font-bold uppercase text-[11px] text-slate-500 tracking-wider">จัดการ / สถานะ</TableHead>
+              <TableHeader className="bg-slate-50/50">
+                <TableRow className="border-b border-slate-100">
+                  <TableHead className="pl-6 font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">รถ</TableHead>
+                  <TableHead className="font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">ประเภทซ่อม/ปัญหา</TableHead>
+                  <TableHead className="hidden sm:table-cell font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">วันที่</TableHead>
+                  <TableHead className="hidden md:table-cell font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">ครั้งถัดไป</TableHead>
+                  <TableHead className="font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">ค่าใช้จ่าย</TableHead>
+                  <TableHead className="hidden lg:table-cell font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">รายละเอียด</TableHead>
+                  <TableHead className="text-right pr-6 font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">จัดการ / สถานะ</TableHead>
                 </TableRow>
               </TableHeader>
 
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    {/* ✅ ปรับ colSpan เป็น 7 ตามจำนวนหัวคอลัมน์ */}
                     <TableCell colSpan={7} className="text-center text-slate-400 py-16">
                       <Loader2 className="animate-spin mx-auto mb-3 text-blue-600 size-6" />
                       กำลังโหลดข้อมูล...
@@ -514,7 +565,7 @@ export default function MaintenancePage() {
 
                     return (
                       <TableRow key={record.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
-                        <TableCell className="pl-6 font-bold text-slate-800">
+                        <TableCell className="pl-6 font-bold text-slate-800 py-4">
                           {record.vehicle_plate || "-"}
                         </TableCell>
 
@@ -528,7 +579,6 @@ export default function MaintenancePage() {
                           {record.date || "-"}
                         </TableCell>
 
-                        {/* ✅ เพิ่มข้อมูลกำหนดครั้งถัดไปในตาราง */}
                         <TableCell className="hidden md:table-cell font-bold text-blue-600">
                           {record.next_due || "-"}
                         </TableCell>
@@ -541,7 +591,7 @@ export default function MaintenancePage() {
                           {record.description || "-"}
                         </TableCell>
 
-                        <TableCell className="text-right pr-6 py-4">
+                        <TableCell className="text-right pr-6">
                           <div className="flex items-center justify-end gap-3">
                             
                             <Button 

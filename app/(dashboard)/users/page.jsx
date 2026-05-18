@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { useAuth } from "@/lib/auth-context" // ✅ 1. นำเข้า useAuth เพื่อดึงข้อมูลแอดมินที่กำลังใช้งาน
 import { 
   Users, ShieldCheck, UserCog, Search, 
   Pencil, Loader2, Mail, Building2, UserCheck, 
   Info, Filter, CheckCircle2, UserCircle, Briefcase
 } from "lucide-react"
-import { PageHeader } from "@/components/page-header" // ✅ เพิ่ม PageHeader ให้เหมือนหน้าอื่น
+import { PageHeader } from "@/components/page-header" 
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
@@ -39,11 +40,24 @@ import { getRoleLabel, getRoleBadgeColor } from "@/lib/auth-context"
 import Swal from 'sweetalert2'
 
 export default function UsersManagementPage() {
+  const { user } = useAuth() // ✅ ดึง User ปัจจุบันที่ล็อกอินอยู่
+  const [currentUserProfile, setCurrentUserProfile] = useState(null)
+  
   const [users, setUsers] = useState([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState("")
   const [editUser, setEditUser] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
+
+  // ✅ ดึงโปรไฟล์ของ Admin ที่กำลังใช้งานอยู่ (เพื่อเอาชื่อไปบันทึกลง Log)
+  useEffect(() => {
+    async function fetchCurrentUserProfile() {
+      if (!user?.id) return;
+      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      if (data) setCurrentUserProfile(data)
+    }
+    fetchCurrentUserProfile()
+  }, [user])
 
   useEffect(() => { 
     fetchUsers() 
@@ -60,21 +74,45 @@ export default function UsersManagementPage() {
     setLoading(false)
   }
 
-  // ✅ ฟังก์ชันอัปเดตข้อมูลแบบ Full Form
+  // ✅ ฟังก์ชันอัปเดตข้อมูลแบบ Full Form พร้อมบันทึก Log
   async function handleUpdateProfile(formData) {
     setIsSaving(true)
+
+    // 📝 ดึงข้อมูลเดิมมาเก็บไว้เปรียบเทียบใน Log
+    const oldData = users.find(u => u.id === formData.id)
 
     const { error } = await supabase
       .from("profiles")
       .update({ 
         role: formData.role,
         department: formData.department,
-        status: formData.status // ✅ อัปเดตสถานะบัญชี
+        status: formData.status 
       })
       .eq("id", formData.id)
 
     if (!error) {
-      fetchUsers() // รีเฟรชข้อมูลใหม่ทั้งหมด
+      // 📝 สั่งบันทึก Log กิจกรรมการแก้ไขข้อมูล
+      if (user) {
+        await supabase.from('audit_logs').insert([{
+          user_id: user.id,
+          user_name: currentUserProfile?.full_name || user.email,
+          action: 'UPDATE',
+          entity_type: 'profiles',
+          entity_id: String(formData.id),
+          old_data: { 
+            role: oldData?.role, 
+            department: oldData?.department, 
+            status: oldData?.status 
+          },
+          new_data: { 
+            role: formData.role, 
+            department: formData.department, 
+            status: formData.status 
+          }
+        }]);
+      }
+
+      fetchUsers() 
       setEditUser(null)
       Swal.fire({ 
         icon: 'success', 
@@ -102,11 +140,16 @@ export default function UsersManagementPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sarabun text-black">
-      {/* ✅ แท็บด้านบนสุด */}
-      <PageHeader title="จัดการสมาชิกและสิทธิ์" />
+    // ✅ เพิ่มพื้นหลังรูปภาพให้เข้ากับธีมใหม่
+    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+      
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      <div className="p-4 md:p-8 space-y-8">
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="จัดการสมาชิกและสิทธิ์" />
+      </div>
+
+      <div className="p-4 md:p-8 space-y-8 relative z-10">
         
         {/* 1. Summary Cards ล้อตามหน้า Dashboard */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -117,8 +160,9 @@ export default function UsersManagementPage() {
         </div>
 
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">จัดการสมาชิกและสิทธิ์</h1>
-          <p className="text-muted-foreground text-sm mt-1 font-medium">ตรวจสอบรายชื่อและกำหนดบทบาทหน้าที่ของบุคลากรในระบบ</p>
+          {/* ✅ ปรับตัวหนังสือให้เป็นสีขาวให้เข้ากับพื้นหลัง */}
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">จัดการสมาชิกและสิทธิ์</h1>
+          <p className="text-white/80 text-sm mt-1 font-medium">ตรวจสอบรายชื่อและกำหนดบทบาทหน้าที่ของบุคลากรในระบบ</p>
         </div>
 
         <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
@@ -203,7 +247,7 @@ export default function UsersManagementPage() {
           </CardContent>
         </Card>
 
-        {/* ✅ 2. Dialog แก้ไขสิทธิ์ แบบใหม่ (Full Form) */}
+        {/* Dialog แก้ไขสิทธิ์ แบบใหม่ (Full Form) */}
         <Dialog open={!!editUser} onOpenChange={(o) => { if(!o) setEditUser(null); }}>
           <DialogContent className="sm:max-w-xl rounded-[2.5rem] border-none bg-white text-black shadow-2xl p-0 overflow-hidden">
             <DialogHeader className="p-6 bg-[#0f172a] text-white">

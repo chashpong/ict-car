@@ -83,7 +83,7 @@ export function LoginForm() {
           <Input
             id="email"
             type="email"
-            placeholder="example@gov.go.th"
+            placeholder="@gmail.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="bg-white/60 focus:bg-white transition-colors h-11 rounded-xl"
@@ -227,7 +227,7 @@ function ForgotPasswordView({ onBack }) {
               <Input
                 id="forgot-email"
                 type="email"
-                placeholder="example@gov.go.th"
+                placeholder="@gmail.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 className="bg-white/60 focus:bg-white transition-colors h-11 rounded-xl"
