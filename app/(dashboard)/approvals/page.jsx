@@ -7,13 +7,13 @@ import {
   Building2, Clock, Briefcase, UserCircle, Phone,
   Car, Info, MapPinned, UserPlus,
   PenTool, Eraser, Image as ImageIcon, Save, CheckCircle2,
-  Printer, Trash2, Upload, RefreshCw // ✅ นำเข้า RefreshCw สำหรับปุ่มรีเฟรช
+  Printer, Trash2, Upload, RefreshCw 
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog" // ✅ นำเข้า DialogDescription เพื่อแก้ Error สีเหลือง
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog" 
 import {
   Select,
   SelectContent,
@@ -556,11 +556,10 @@ export default function ApprovalsPage() {
     fetchData()
     fetchDrivers()
 
-    // ✅ 1. เพิ่มระบบ Realtime Subscription (โหลดข้อมูลอัตโนมัติเมื่อมีคนขอจองใหม่)
     const channel = supabase
       .channel('public:bookings')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
-        fetchData() // รีเฟรชข้อมูลเมื่อมีการเปลี่ยนแปลงในฐานข้อมูล
+        fetchData() 
       })
       .subscribe()
 
@@ -663,18 +662,26 @@ export default function ApprovalsPage() {
   }
 
   return (
-    <div className="font-sarabun text-black min-h-screen bg-slate-50/30">
-      <PageHeader title="การพิจารณาอนุมัติ" />
+    // ✅ 1. เพิ่มโค้ดใส่รูปพื้นหลัง และ Overlay สีดำโปร่งแสงที่ div นอกสุด
+    <div className="font-sarabun text-black min-h-screen bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+      
+      {/* 👇 เพิ่ม Overlay สีดำกึ่งโปร่งใสเหนือรูปภาพ */}
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      <div className="flex flex-1 flex-col gap-6 p-4 md:p-8">
+      {/* ✅ PageHeader ให้อยู่เหนือ Overlay */}
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="การพิจารณาอนุมัติ" />
+      </div>
+
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-8 relative z-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-2">
           
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 italic">
+              {/* ✅ 2. ลบคลาส italic ออก และเปลี่ยนสีข้อความเป็น text-white */}
+              <h1 className="text-3xl font-extrabold tracking-tight text-white">
                 พิจารณาคำขอใช้รถยนต์
               </h1>
-              {/* ✅ 2. ปุ่มกดรีเฟรชข้อมูลด้วยมือ (Manual Refresh) */}
               <Button 
                 variant="outline" 
                 size="icon" 
@@ -685,8 +692,9 @@ export default function ApprovalsPage() {
                 <RefreshCw className="size-4" />
               </Button>
             </div>
-            <p className="text-sm text-slate-500 font-medium">
-              รายการรอตรวจเอกสาร: <span className="text-blue-600 font-bold">{bookings.length} รายการ</span>
+            {/* ✅ 3. เปลี่ยนสีข้อความสถานะให้เข้ากับพื้นหลัง */}
+            <p className="text-sm text-white/80 font-medium mt-1">
+              รายการรอตรวจเอกสาร: <span className="text-blue-400 font-bold">{bookings.length} รายการ</span>
             </p>
           </div>
 
@@ -715,7 +723,6 @@ export default function ApprovalsPage() {
               แบบฟอร์มตรวจสอบและพิจารณาอนุมัติ
             </DialogTitle>
             
-            {/* ✅ 3. ซ่อน DialogDescription เพื่อแก้ Error สีเหลืองใน Console */}
             <DialogDescription className="hidden">
               รายละเอียดการตรวจสอบและอนุมัติคำขอใช้รถยนต์
             </DialogDescription>

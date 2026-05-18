@@ -2,13 +2,14 @@
 
 import { supabase } from "@/lib/supabase"
 import { useState } from "react"
-import { Eye, EyeOff, LogIn, Shield, Loader2, UserPlus } from "lucide-react"
+import { Eye, EyeOff, LogIn, Shield, Loader2 } from "lucide-react"
 import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Checkbox } from "@/components/ui/checkbox"
 import { useAuth } from "@/lib/auth-context"
+import Swal from 'sweetalert2' // ✅ 1. นำเข้า SweetAlert2
 
 export function LoginForm() {
   const { login } = useAuth()
@@ -35,11 +36,27 @@ export function LoginForm() {
     }
 
     setIsSubmitting(true)
+
+    // ✅ 2. แสดงหน้าต่างโหลดแบบเต็มจอกันคนกดรัว
+    Swal.fire({
+      title: 'กำลังเข้าสู่ระบบ...',
+      text: 'กรุณารอสักครู่',
+      allowOutsideClick: false,
+      didOpen: () => {
+        Swal.showLoading()
+      }
+    });
+
     const result = await login(email, password, remember)
-    setIsSubmitting(false)
 
     if (!result.success) {
+      // ❌ 3. กรณีล็อกอินไม่ผ่าน: ปิดหน้าต่างโหลดและโชว์ Error
+      Swal.close() 
       setError(result.error || "เข้าสู่ระบบไม่สำเร็จ")
+      setIsSubmitting(false) 
+    } else {
+      // ✅ 4. กรณีล็อกอินผ่าน: ปล่อยหน้าต่างโหลดค้างไว้ แล้วเปลี่ยนหน้า (ป้องกันหน้าค้าง)
+      window.location.href = "/"
     }
   }
 
@@ -70,6 +87,7 @@ export function LoginForm() {
             value={email}
             onChange={(e) => setEmail(e.target.value)}
             className="bg-white/60 focus:bg-white transition-colors h-11 rounded-xl"
+            disabled={isSubmitting} 
           />
         </div>
 
@@ -83,11 +101,13 @@ export function LoginForm() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               className="pr-10 bg-white/60 focus:bg-white transition-colors h-11 rounded-xl"
+              disabled={isSubmitting} 
             />
             <button
               type="button"
               onClick={() => setShowPassword((v) => !v)}
               className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+              disabled={isSubmitting}
             >
               {showPassword ? <EyeOff className="size-4" /> : <Eye className="size-4" />}
             </button>
@@ -100,6 +120,7 @@ export function LoginForm() {
               id="remember"
               checked={remember}
               onCheckedChange={(v) => setRemember(v === true)}
+              disabled={isSubmitting}
             />
             <Label htmlFor="remember" className="text-sm font-medium text-slate-600 cursor-pointer">
               จดจำการเข้าสู่ระบบ
@@ -109,6 +130,7 @@ export function LoginForm() {
             type="button"
             onClick={() => setShowForgot(true)}
             className="text-sm font-bold text-blue-600 hover:text-blue-800"
+            disabled={isSubmitting}
           >
             ลืมรหัสผ่าน?
           </button>
@@ -117,9 +139,9 @@ export function LoginForm() {
         <div className="space-y-4">
           <Button type="submit" className="w-full bg-[#1e3a5f] hover:bg-[#152a45] text-white shadow-md h-11 text-lg font-bold rounded-xl" disabled={isSubmitting}>
             {isSubmitting ? (
-              <Loader2 className="mr-2 size-4 animate-spin" />
+              <Loader2 className="mr-2 size-5 animate-spin" />
             ) : (
-              <LogIn className="mr-2 size-4" />
+              <LogIn className="mr-2 size-5" />
             )}
             {isSubmitting ? "กำลังเข้าสู่ระบบ..." : "เข้าสู่ระบบ"}
           </Button>
@@ -131,6 +153,7 @@ export function LoginForm() {
                 type="button"
                 onClick={() => router.push("/register")}
                 className="font-bold text-blue-600 hover:text-blue-800 underline underline-offset-4"
+                disabled={isSubmitting}
               >
                 สมัครสมาชิกใหม่
               </button>

@@ -1,6 +1,7 @@
 import { Geist, Geist_Mono } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/lib/auth-context'
+import { SessionTimeout } from '@/components/session-timeout' // ✅ 1. เพิ่มการนำเข้าระบบตรวจจับเวลา
 import './globals.css'
 
 const _geist = Geist({ subsets: ["latin"] });
@@ -34,6 +35,9 @@ export default function RootLayout({ children }) {
     <html lang="th">
       <body className="font-sans antialiased">
         <AuthProvider>
+          {/* ✅ 2. วาง SessionTimeout ไว้ภายใน AuthProvider เพื่อให้ระบบเริ่มเฝ้าระวังการใช้งาน */}
+          <SessionTimeout /> 
+          
           {children}
         </AuthProvider>
         <Analytics />

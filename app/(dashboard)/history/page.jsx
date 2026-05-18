@@ -8,7 +8,7 @@ import {
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { supabase } from "@/lib/supabase"
 import { useReactToPrint } from "react-to-print"
 import { Form3Document } from "@/components/form-3-document" 
@@ -72,7 +72,6 @@ function HistoryDialogContent({ booking, userProfile, onClose }) {
             vehiclePlate={booking.display_license_plate} 
             signatureImage={booking.approver_signature} 
             adminName={userProfile?.full_name || userProfile?.name} 
-            // ✅ ใช้เลขไมล์ที่ดึงมาจากตาราง logbooks ที่ประมวลผลแล้ว
             startMileage={booking.logbook_start_mileage} 
             endMileage={booking.logbook_end_mileage} 
           />
@@ -106,7 +105,6 @@ export default function HistoryPage() {
   async function fetchHistory() {
     setIsLoading(true)
     try {
-      // 1. ดึงข้อมูลการจองทั้งหมด
       const { data: bData, error: bError } = await supabase
         .from("bookings")
         .select("*")
@@ -115,11 +113,9 @@ export default function HistoryPage() {
 
       if (bError) throw bError;
 
-      // 2. ดึงข้อมูลรถและคนขับ
       const { data: vData } = await supabase.from("vehicles").select("id, license_plate, last_mileage");
       const { data: dData } = await supabase.from("drivers").select("id, name");
 
-      // 3. ✅ ดึงข้อมูลตาราง logbooks เฉพาะที่เกี่ยวข้องกับงานพวกนี้
       const bookingIds = (bData || []).map(b => b.id);
       let lData = [];
       if (bookingIds.length > 0) {
@@ -127,28 +123,23 @@ export default function HistoryPage() {
           .from("logbooks")
           .select("booking_id, log_date, start_mileage, end_mileage")
           .in("booking_id", bookingIds)
-          .order("log_date", { ascending: true }); // ✅ เรียงตามวันที่ เพื่อหาวันแรกและวันสุดท้าย
+          .order("log_date", { ascending: true }); 
         lData = logs || [];
       }
 
-      // 4. ประกอบร่างข้อมูลเข้าด้วยกัน
       const enrichedData = (bData || []).map(booking => {
         const vehicle = vData?.find(v => v.id === booking.vehicle_id);
         const driver = dData?.find(d => d.id === booking.driver_id);
         
-        // หากลุ่ม logbooks ของงานนี้
         const bookingLogs = lData.filter(l => l.booking_id === booking.id);
         
-        // ตัวแปรเก็บเลขไมล์ที่จะไปแสดงในกระดาษ
         let finalStartMileage = "...........................";
         let finalEndMileage = "...........................";
 
         if (bookingLogs.length > 0) {
-          // มีบันทึกใน logbook -> วันแรกเอาไมล์เริ่ม, วันสุดท้ายเอาไมล์จบ
           finalStartMileage = bookingLogs[0].start_mileage || "...........................";
           finalEndMileage = bookingLogs[bookingLogs.length - 1].end_mileage || "...........................";
         } else {
-          // ยังไม่มีบันทึกเลย (รถยังไม่ออก) -> โชว์เลขไมล์ปัจจุบันของรถไปก่อน
           finalStartMileage = vehicle?.last_mileage || "...........................";
         }
 
@@ -157,8 +148,8 @@ export default function HistoryPage() {
           display_license_plate: vehicle?.license_plate || booking.license_plate || "-",
           display_driver_name: driver?.name || booking.driver_name || "ไม่ระบุคนขับ",
           current_mileage: vehicle?.last_mileage,
-          logbook_start_mileage: finalStartMileage, // ✅ เก็บค่าที่คำนวณแล้วไว้ใช้
-          logbook_end_mileage: finalEndMileage      // ✅ เก็บค่าที่คำนวณแล้วไว้ใช้
+          logbook_start_mileage: finalStartMileage, 
+          logbook_end_mileage: finalEndMileage      
         };
       });
 
@@ -171,16 +162,25 @@ export default function HistoryPage() {
   }
 
   return (
-    <div className="font-sarabun text-black min-h-screen bg-slate-50/30">
-      <PageHeader title="ประวัติการอนุมัติ" />
+    // ✅ 1. ตั้งค่ารูปภาพพื้นหลังและ Overlay
+    <div className="font-sarabun text-black min-h-screen bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+      
+      {/* 👇 เพิ่ม Overlay สีดำกึ่งโปร่งใสเหนือรูปภาพ */}
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      <div className="flex flex-1 flex-col gap-6 p-4 md:p-8">
+      {/* ✅ 2. ยก PageHeader ให้อยู่เหนือ Overlay */}
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="ประวัติการอนุมัติ" />
+      </div>
+
+      <div className="flex flex-1 flex-col gap-6 p-4 md:p-8 relative z-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-2">
           <div className="space-y-1">
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 italic">
+            {/* ✅ 3. ลบคำว่า italic ออก และเปลี่ยนสีข้อความเป็นสีขาว */}
+            <h1 className="text-3xl font-extrabold tracking-tight text-white">
               สมุดบันทึกและประวัติการใช้รถ
             </h1>
-            <p className="text-sm text-slate-500 font-medium">
+            <p className="text-sm text-white/80 font-medium mt-1">
               รายการที่อนุมัติแล้วและเสร็จสิ้นทั้งหมด ({historyBookings.length} รายการ)
             </p>
           </div>
@@ -279,6 +279,9 @@ export default function HistoryPage() {
             <DialogTitle className="text-2xl font-bold font-sarabun tracking-tight text-white mx-auto">
               แฟ้มเอกสารใบขออนุญาตใช้รถ (แบบ ๓)
             </DialogTitle>
+            <DialogDescription className="hidden">
+              แสดงพรีวิวเอกสารและรายละเอียดของการจอง
+            </DialogDescription>
           </DialogHeader>
 
           <div className="overflow-hidden flex-1 flex flex-col bg-slate-50 min-h-0">

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardHeader } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
@@ -335,125 +335,137 @@ export default function BookingsPage() {
     return matchesSearch && matchesStatus;
   })
 
-  // ... (ส่วนบนคงเดิมทั้งหมดจนถึงส่วน return ของ BookingsPage)
-
   return (
-    <div className="min-h-screen bg-slate-50/50 p-4 md:p-8 font-sarabun text-black">
-      <div className="flex flex-col gap-2 mb-8">
-        <h1 className="text-3xl font-extrabold tracking-tight text-slate-900 italic">การจองรถยนต์ส่วนกลาง</h1>
-        <p className="text-muted-foreground text-sm">ระบบบริหารจัดการและจองยานพาหนะอิเล็กทรอนิกส์ (แบบฟอร์ม ๓)</p>
+    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
+      
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="การจองรถ" />
       </div>
 
-      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-        <div className="flex flex-1 gap-3 max-w-2xl">
-          <div className="relative flex-1">
-            <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
-            <Input 
-              placeholder="ค้นหาชื่อผู้จอง หรือ สถานที่..." 
-              value={search} 
-              onChange={(e) => setSearch(e.target.value)} 
-              className="pl-11 h-12 rounded-2xl border-none shadow-sm bg-white focus:ring-2 focus:ring-blue-500" 
-            />
-          </div>
-          <Select value={statusFilter} onValueChange={setStatusFilter}>
-            <SelectTrigger className="w-[180px] h-12 rounded-2xl border-none shadow-sm bg-white font-bold">
-              <SelectValue placeholder="ทุกสถานะ" />
-            </SelectTrigger>
-            <SelectContent className="font-sarabun text-black bg-white">
-              <SelectItem value="all">สถานะทั้งหมด</SelectItem>
-              <SelectItem value="pending">รอดำเนินการ</SelectItem>
-              <SelectItem value="approved">อนุมัติแล้ว</SelectItem>
-              <SelectItem value="rejected">ไม่อนุมัติ</SelectItem>
-              <SelectItem value="completed">เสร็จสิ้น</SelectItem>
-            </SelectContent>
-          </Select>
+      <div className="p-4 md:p-8 relative z-10">
+        <div className="flex flex-col gap-2 mb-8">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white">การจองรถยนต์ส่วนกลาง</h1>
+          <p className="text-white/80 text-sm">ระบบบริหารจัดการและจองยานพาหนะอิเล็กทรอนิกส์ (แบบฟอร์ม ๓)</p>
         </div>
 
-        <Dialog open={createOpen} onOpenChange={setCreateOpen}>
-          <DialogTrigger asChild>
-            <Button className="bg-[#0f172a] hover:bg-slate-800 text-white font-bold h-12 px-8 rounded-2xl shadow-lg transition-transform hover:scale-[1.02]">
-              <Car className="mr-2 size-5" /> จองรถยนต์ใหม่
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-4xl p-0 rounded-[2.5rem] border-none overflow-hidden bg-white shadow-2xl">
-            <DialogHeader className="bg-[#0f172a] p-8 text-white">
-              <DialogTitle className="text-2xl font-bold text-center tracking-tight">ใบขออนุญาตใช้รถส่วนกลาง (แบบ ๓)</DialogTitle>
-            </DialogHeader>
-            <div className="px-10 pb-4 pt-2">
-              <BookingForm onClose={() => setCreateOpen(false)} onSave={saveBooking} vehicles={vehicles} allBookings={bookings} />
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+          <div className="flex flex-1 gap-3 max-w-2xl">
+            <div className="relative flex-1">
+              <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
+              <Input 
+                placeholder="ค้นหาชื่อผู้จอง หรือ สถานที่..." 
+                value={search} 
+                onChange={(e) => setSearch(e.target.value)} 
+                className="pl-11 h-12 rounded-2xl border-none shadow-sm bg-white focus:ring-2 focus:ring-blue-500" 
+              />
             </div>
-          </DialogContent>
-        </Dialog>
-      </div>
+            <Select value={statusFilter} onValueChange={setStatusFilter}>
+              <SelectTrigger className="w-[180px] h-12 rounded-2xl border-none shadow-sm bg-white font-bold">
+                <SelectValue placeholder="ทุกสถานะ" />
+              </SelectTrigger>
+              <SelectContent className="font-sarabun text-black bg-white">
+                <SelectItem value="all">สถานะทั้งหมด</SelectItem>
+                <SelectItem value="pending">รอดำเนินการ</SelectItem>
+                <SelectItem value="approved">อนุมัติแล้ว</SelectItem>
+                <SelectItem value="rejected">ไม่อนุมัติ</SelectItem>
+                <SelectItem value="completed">เสร็จสิ้น</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
-      <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
-        <CardContent className="p-0 overflow-x-auto">
-          <Table>
-            <TableHeader className="bg-slate-50/50">
-              <TableRow className="border-b border-slate-100">
-                <TableHead className="pl-6 py-5 font-bold text-slate-500 uppercase text-[11px] tracking-widest">ผู้ขอ / หน่วยงาน</TableHead>
-                <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">วัตถุประสงค์</TableHead>
-                <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">เริ่มเดินทาง</TableHead>
-                <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">เดินทางกลับ</TableHead>
-                <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">คน</TableHead>
-                <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">ประเภทรถ</TableHead>
-                <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">ทะเบียนรถ</TableHead>
-                <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">สถานะ</TableHead>
-                <TableHead className="pr-6 text-right font-bold text-slate-500 uppercase text-[11px] tracking-widest">จัดการ</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {isLoading ? (
-                <TableRow><TableCell colSpan={9} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600" />กำลังโหลดข้อมูล...</TableCell></TableRow>
-              ) : filtered.length === 0 ? (
-                <TableRow><TableCell colSpan={9} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
-              ) : filtered.map((b) => (
-                <TableRow key={b.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50 group">
-                  <TableCell className="pl-6">
-                    <p className="font-bold text-slate-900">{b.user_name}</p>
-                    <p className="text-[10px] text-slate-500 truncate max-w-[120px]">{b.department || "ไม่ระบุแผนก"}</p>
-                  </TableCell>
-                  <TableCell className="max-w-[150px]">
-                    <p className="text-xs text-slate-600 truncate">{b.purpose || "-"}</p>
-                  </TableCell>
-                  <TableCell>
-                    <p className="text-[11px] font-medium text-slate-700">{formatThaiDate(b.start_date)}</p>
-                    <p className="text-[10px] text-blue-600 font-bold">{formatThaiTime(b.start_time)}</p>
-                  </TableCell>
-                  <TableCell>
-                    <p className="text-[11px] font-medium text-slate-700">{formatThaiDate(b.end_date)}</p>
-                    <p className="text-[10px] text-rose-600 font-bold">{formatThaiTime(b.end_time)}</p>
-                  </TableCell>
-                  <TableCell className="text-center font-bold text-slate-700 text-xs">
-                    {b.passengers}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 text-[9px] font-bold h-6 rounded-md">
-                      {b.vehicle_type_preference || "-"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-center font-mono font-bold text-blue-700 text-xs">
-                    {b.vehicles?.license_plate || "-"}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    <Badge className={cn("px-3 py-0.5 rounded-full text-[9px] font-bold border shadow-sm", statusMap[b.status]?.className)}>
-                      {statusMap[b.status]?.label}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="pr-6 text-right">
-                    <div className="flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
-                      {/* ✅ เอาปุ่มพิมพ์ออกตามคำสั่ง */}
-                      <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} className="text-rose-500 hover:bg-rose-50 rounded-xl h-9 w-9">
-                        <Trash2 className="size-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
+          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+            <DialogTrigger asChild>
+              <Button className="bg-[#0f172a] hover:bg-slate-800 text-white font-bold h-12 px-8 rounded-2xl shadow-lg transition-transform hover:scale-[1.02]">
+                <Car className="mr-2 size-5" /> จองรถยนต์ใหม่
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-4xl p-0 rounded-[2.5rem] border-none overflow-hidden bg-white shadow-2xl">
+              <DialogHeader className="bg-[#0f172a] p-8 text-white">
+                <DialogTitle className="text-2xl font-bold text-center tracking-tight">ใบขออนุญาตใช้รถส่วนกลาง (แบบ ๓)</DialogTitle>
+                <DialogDescription className="hidden">
+                  แบบฟอร์มกรอกรายละเอียดเพื่อขออนุมัติการใช้งานรถยนต์ส่วนกลาง
+                </DialogDescription>
+              </DialogHeader>
+              <div className="px-10 pb-4 pt-2">
+                <BookingForm onClose={() => setCreateOpen(false)} onSave={saveBooking} vehicles={vehicles} allBookings={bookings} />
+              </div>
+            </DialogContent>
+          </Dialog>
+        </div>
+
+        <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
+          <CardContent className="p-0 overflow-x-auto">
+            <Table>
+              <TableHeader className="bg-slate-50/50">
+                <TableRow className="border-b border-slate-100">
+                  <TableHead className="pl-6 py-5 font-bold text-slate-500 uppercase text-[11px] tracking-widest">เลขที่</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">ผู้ขอ / หน่วยงาน</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">วัตถุประสงค์</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">เริ่มเดินทาง</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">เดินทางกลับ</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">คน</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">ประเภทรถ</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">ทะเบียนรถ</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">สถานะ</TableHead>
+                  <TableHead className="pr-6 text-right font-bold text-slate-500 uppercase text-[11px] tracking-widest">จัดการ</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
+              </TableHeader>
+              <TableBody>
+                {isLoading ? (
+                  <TableRow><TableCell colSpan={10} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600" />กำลังโหลดข้อมูล...</TableCell></TableRow>
+                ) : filtered.length === 0 ? (
+                  <TableRow><TableCell colSpan={10} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
+                ) : filtered.map((b) => (
+                  <TableRow key={b.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50 group">
+                    <TableCell className="pl-6 font-mono text-xs font-bold text-slate-500 uppercase">
+                      REQ-{b.id.split('-')[0]}
+                    </TableCell>
+                    <TableCell>
+                      <p className="font-bold text-slate-900">{b.user_name}</p>
+                      <p className="text-[10px] text-slate-500 truncate max-w-[120px]">{b.department || "ไม่ระบุแผนก"}</p>
+                    </TableCell>
+                    <TableCell className="max-w-[150px]">
+                      <p className="text-xs text-slate-600 truncate">{b.purpose || "-"}</p>
+                    </TableCell>
+                    <TableCell>
+                      <p className="text-[11px] font-medium text-slate-700">{formatThaiDate(b.start_date)}</p>
+                      <p className="text-[10px] text-blue-600 font-bold">{formatThaiTime(b.start_time)}</p>
+                    </TableCell>
+                    <TableCell>
+                      <p className="text-[11px] font-medium text-slate-700">{formatThaiDate(b.end_date)}</p>
+                      <p className="text-[10px] text-rose-600 font-bold">{formatThaiTime(b.end_time)}</p>
+                    </TableCell>
+                    <TableCell className="text-center font-bold text-slate-700 text-xs">
+                      {b.passengers}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 text-[9px] font-bold h-6 rounded-md">
+                        {b.vehicle_type_preference || "-"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-center font-mono font-bold text-blue-700 text-xs">
+                      {b.vehicles?.license_plate || "-"}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Badge className={cn("px-3 py-0.5 rounded-full text-[9px] font-bold border shadow-sm", statusMap[b.status]?.className)}>
+                        {statusMap[b.status]?.label}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="pr-6 text-right">
+                      <div className="flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                        <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} className="text-rose-500 hover:bg-rose-50 rounded-xl h-9 w-9">
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }
