@@ -1,5 +1,6 @@
 import { Sarabun } from 'next/font/google' // ✅ 1. นำเข้าฟอนต์ Sarabun ของไทยจาก Next.js โดยตรง
 import { Analytics } from '@vercel/analytics/next'
+import { SpeedInsights } from '@vercel/speed-insights/next'
 import { AuthProvider } from '@/lib/auth-context'
 import { SessionTimeout } from '@/components/session-timeout'
 import './globals.css'
@@ -46,6 +47,7 @@ export default function RootLayout({ children }) {
           {children}
         </AuthProvider>
         <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   )
