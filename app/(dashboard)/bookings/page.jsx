@@ -6,7 +6,7 @@ import {
   Car, Search, Eye, CalendarIcon, Clock, Trash2, 
   User, Phone, MapPin, CheckCircle2, 
   AlertCircle, Info, Loader2, Users, ClipboardList,
-  FileText, Flag, XCircle, RefreshCw // ✅ นำเข้าไอคอน RefreshCw
+  FileText, Flag, XCircle, RefreshCw 
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -21,7 +21,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Calendar } from "@/components/ui/calendar"
 import { cn } from "@/lib/utils"
-import { format, isBefore, parse } from "date-fns" 
+import { format, isBefore, parse, startOfToday } from "date-fns" 
 import { th } from "date-fns/locale"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context" 
@@ -84,6 +84,9 @@ function TimePickerClock({ value, onChange }) {
 
 function DatePickerThai({ dateValue, onDateChange, placeholder }) {
   const date = dateValue ? new Date(dateValue) : undefined;
+  
+  const today = startOfToday(); 
+
   return (
     <Popover>
       <PopoverTrigger asChild>
@@ -92,7 +95,15 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-0 rounded-2xl border-none shadow-2xl bg-white" align="start">
-        <Calendar mode="single" selected={date} onSelect={(d) => onDateChange(d ? format(d, 'yyyy-MM-dd') : "")} locale={th} initialFocus className="text-black font-sarabun" />
+        <Calendar 
+          mode="single" 
+          selected={date} 
+          onSelect={(d) => onDateChange(d ? format(d, 'yyyy-MM-dd') : "")} 
+          locale={th} 
+          initialFocus 
+          className="text-black font-sarabun" 
+          disabled={(date) => isBefore(date, today)} 
+        />
       </PopoverContent>
     </Popover>
   );
@@ -280,7 +291,8 @@ function BookingTimelineDialog({ booking, onClose }) {
     const stepIndex = flow.indexOf(stepName);
 
     if (stepIndex < currentIndex) return 'completed';
-    if (stepIndex === currentIndex) return 'current';
+    // ✅ แก้ไขส่วนนี้: ถ้าระบบบอกว่า "เสร็จสิ้น" ให้ขึ้นเช็คถูกเลย ไม่ต้องหมุนรอ
+    if (stepIndex === currentIndex) return status === 'completed' ? 'completed' : 'current';
     return 'pending';
   };
 
@@ -292,10 +304,8 @@ function BookingTimelineDialog({ booking, onClose }) {
   ];
 
   return (
-    <div 
-      className="font-sarabun text-black flex flex-col h-full w-full bg-white overflow-hidden rounded-[2.5rem] relative"
-      style={{ backgroundImage: "url('/images/pattern-bg.png')", backgroundRepeat: "repeat" }}
-    >
+    // ✅ ลบรูปแบบ background image ออกไปให้เหลือแค่สีขาวเรียบๆ กันขึ้น 404
+    <div className="font-sarabun text-black flex flex-col h-full w-full bg-white overflow-hidden rounded-[2.5rem] relative">
       <div className="bg-[#0f172a] p-6 md:p-8 text-white shrink-0 relative z-10 shadow-md">
         <div className="flex justify-between items-start mb-4">
           <div>
@@ -386,15 +396,6 @@ export default function BookingsPage() {
 
   const [viewBooking, setViewBooking] = useState(null)
 
-  useEffect(() => {
-    async function fetchUserProfile() {
-      if (!user?.id) return;
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) setUserProfile(data)
-    }
-    fetchUserProfile()
-  }, [user])
-
   useEffect(() => { loadData() }, [user]) 
 
   async function loadData() {
@@ -407,14 +408,26 @@ export default function BookingsPage() {
       query = query.eq("user_id", user.id);
     }
 
-    const [bRes, vRes] = await Promise.all([
-      query.limit(100),
-      supabase.from("vehicles").select("*")
-    ]);
+    try {
+      const promises = [
+        query.limit(100),
+        supabase.from("vehicles").select("*")
+      ];
 
-    if (!bRes.error) setBookings(bRes.data || []);
-    if (!vRes.error) setVehicles(vRes.data || []);
-    setIsLoading(false);
+      if (user?.id && !userProfile) {
+        promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
+      }
+
+      const results = await Promise.all(promises);
+
+      if (results[0].data) setBookings(results[0].data);
+      if (results[1].data) setVehicles(results[1].data);
+      if (results[2]?.data) setUserProfile(results[2].data);
+    } catch (error) {
+      console.error("Load Data Error:", error)
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function saveBooking(data) {
@@ -494,7 +507,7 @@ export default function BookingsPage() {
         priority 
         className="object-cover z-0 opacity-40" 
       />
-      <div className="absolute inset-0 bg-black/50 z-0"></div>
+      <div className="absolute inset-0 bg-black/60 z-0"></div>
       
       <div className="relative z-10 border-b border-white/10">
         <PageHeader title="การจองรถ" />
@@ -531,7 +544,6 @@ export default function BookingsPage() {
               </SelectContent>
             </Select>
 
-            {/* ✅ 3. ปุ่มกดรีเฟรชข้อมูล (Refresh Button) */}
             <Button
               variant="outline"
               size="icon"
@@ -583,7 +595,7 @@ export default function BookingsPage() {
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={10} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600" />กำลังโหลดข้อมูล...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={10} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />กำลังโหลดข้อมูล...</TableCell></TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow><TableCell colSpan={10} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
                 ) : filtered.map((b) => (
@@ -610,7 +622,7 @@ export default function BookingsPage() {
                       {b.passengers}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 text-[9px] font-bold h-6 rounded-md">
+                      <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 text-[9px] font-bold h-6 rounded-md shadow-sm">
                         {b.vehicle_type_preference || "-"}
                       </Badge>
                     </TableCell>
@@ -629,14 +641,14 @@ export default function BookingsPage() {
                           variant="ghost" 
                           size="icon" 
                           onClick={() => setViewBooking(b)} 
-                          className="text-blue-500 hover:bg-blue-100 hover:text-blue-700 rounded-xl h-9 w-9"
+                          className="text-blue-500 hover:bg-blue-100 hover:text-blue-700 rounded-xl h-9 w-9 transition-colors"
                           title="ดูสถานะคำขอ"
                         >
                           <Eye className="size-4" />
                         </Button>
 
                         {b.status === 'pending' && (
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} className="text-rose-500 hover:bg-rose-100 hover:text-rose-700 rounded-xl h-9 w-9">
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} className="text-rose-500 hover:bg-rose-100 hover:text-rose-700 rounded-xl h-9 w-9 transition-colors">
                             <Trash2 className="size-4" />
                           </Button>
                         )}

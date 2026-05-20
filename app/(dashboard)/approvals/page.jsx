@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo } from "react"
-import Image from "next/image" 
+import Image from "next/image"
 import { useAuth } from "@/lib/auth-context"
-import { cn } from "@/lib/utils" // ✅ 1. เพิ่มคำสั่งนี้นำเข้า cn เรียบร้อยแล้วครับ!
+import { cn } from "@/lib/utils"
 import {
   Check, X, ChevronRight, MapPin, Calendar, Users,
   Building2, Clock, Briefcase, UserCircle, Phone,
@@ -15,7 +15,7 @@ import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardFooter } from "@/components/ui/card"
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog" 
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import {
   Select,
   SelectContent,
@@ -29,7 +29,7 @@ import Swal from 'sweetalert2'
 import SignatureCanvas from 'react-signature-canvas'
 
 import { Form3Document } from "@/components/form-3-document"
-import { useReactToPrint } from "react-to-print" 
+import { useReactToPrint } from "react-to-print"
 
 const formatThaiDate = (dateString) => {
   if (!dateString) return "ไม่ได้ระบุ";
@@ -101,7 +101,7 @@ function BookingApprovalCard({ booking, onClick }) {
 function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers, selectedDriverId, setSelectedDriverId, userProfile, onUpdateSignatures }) {
 
   const sigCanvas = useRef(null)
-  const documentRef = useRef(null) 
+  const documentRef = useRef(null)
 
   const savedSignatures = useMemo(() => {
     try {
@@ -115,18 +115,19 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
       return [];
     }
   }, [userProfile?.saved_signature]);
-  
+
   const canSaveMore = savedSignatures.length < 5;
 
   const [signatureMode, setSignatureMode] = useState(savedSignatures.length > 0 ? 'saved' : 'draw')
   const [hasDrawn, setHasDrawn] = useState(false)
 
+  // ✅ รูปพรีวิวลายเซ็นก่อนเซฟ (ใช้กับโหมดอัปโหลดรูปด้วย)
   const [currentSignature, setCurrentSignature] = useState(
     savedSignatures.length > 0 ? savedSignatures[0].data : null
   )
 
   const handlePrint = useReactToPrint({
-    contentRef: documentRef, 
+    contentRef: documentRef,
     documentTitle: `ใบขออนุญาตใช้รถ_${booking.user_name}`,
   });
 
@@ -134,7 +135,7 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
     if (sigCanvas.current) {
       sigCanvas.current.clear()
       setHasDrawn(false)
-      setCurrentSignature(null) 
+      setCurrentSignature(null)
     }
   }
 
@@ -150,10 +151,10 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
     if (file) {
       const reader = new FileReader();
       reader.onloadend = (event) => {
-        const img = new Image();
+        const img = new window.Image(); // ✅ แก้ไข Image ให้ถูกเรียกใช้งานจาก Browser โดยตรง ไม่ซ้ำกับ <Image/> ของ Next.js
         img.onload = () => {
-          const MAX_WIDTH = 800; 
-          const MAX_HEIGHT = 400; 
+          const MAX_WIDTH = 800;
+          const MAX_HEIGHT = 400;
           let width = img.width;
           let height = img.height;
 
@@ -173,16 +174,17 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
           ctx.drawImage(img, 0, 0, width, height);
 
           const resizedBase64 = canvas.toDataURL('image/png');
-          setCurrentSignature(resizedBase64);
+          setCurrentSignature(resizedBase64); // ✅ เซ็ตค่าให้แสดงพรีวิว
         };
         img.src = event.target.result;
       };
       reader.readAsDataURL(file);
     }
-    e.target.value = null;
+    e.target.value = null; // รีเซ็ต input file
   };
 
   useEffect(() => {
+    // รีเซ็ตลายเซ็นพรีวิวเมื่อสลับโหมด
     if (signatureMode === 'saved') {
       if (savedSignatures.length > 0) {
         const exists = savedSignatures.find(s => s.data === currentSignature)
@@ -197,39 +199,100 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
         setCurrentSignature(null);
       }
     } else if (signatureMode === 'upload') {
-      if (!currentSignature || !currentSignature.startsWith('data:image')) {
-        setCurrentSignature(null);
-      }
+      setCurrentSignature(null); // เคลียร์ช่องอัปโหลดเมื่อเพิ่งเข้ามา
     }
   }, [signatureMode, savedSignatures]);
 
-  const handleDeleteSignature = (idToDelete) => {
+  const handleDeleteSignature = (e, idToDelete) => {
+
+    // ✅ กัน event วิ่งไปปิด Dialog
+    e.preventDefault()
+    e.stopPropagation()
+
     Swal.fire({
       title: 'ลบลายเซ็นนี้?',
       text: "คุณจะไม่สามารถกู้คืนได้",
       icon: 'warning',
+
       showCancelButton: true,
       confirmButtonColor: '#ef4444',
       cancelButtonColor: '#94a3b8',
+
       confirmButtonText: 'ลบทิ้ง',
-      cancelButtonText: 'ยกเลิก'
+      cancelButtonText: 'ยกเลิก',
+
+      // ✅ สำคัญมาก
+      returnFocus: false,
+      allowEscapeKey: false,
+      allowOutsideClick: false,
+      backdrop: true,
+
     }).then(async (result) => {
-      if (result.isConfirmed) {
-        const updatedSignatures = savedSignatures.filter(sig => sig.id !== idToDelete)
-        await onUpdateSignatures(updatedSignatures) 
-        
-        const deletedSig = savedSignatures.find(sig => sig.id === idToDelete)
-        if (deletedSig && deletedSig.data === currentSignature) {
-          setCurrentSignature(updatedSignatures.length > 0 ? updatedSignatures[0].data : null)
-          if (updatedSignatures.length === 0) setSignatureMode('draw')
+
+      // ❌ ถ้าไม่ได้กดลบจริง ออกเลย
+      if (!result.isConfirmed) return
+
+      try {
+
+        // ✅ กัน pointer event เพี้ยนหลัง Swal ปิด
+        document.body.style.pointerEvents = 'auto'
+
+        const updatedSignatures = savedSignatures.filter(
+          sig => sig.id !== idToDelete
+        )
+
+        const success = await onUpdateSignatures(updatedSignatures)
+
+        if (!success) {
+          Swal.fire({
+            icon: 'error',
+            title: 'เกิดข้อผิดพลาด',
+            text: 'ไม่สามารถลบลายเซ็นได้'
+          })
+          return
         }
+
+        const deletedSig = savedSignatures.find(
+          sig => sig.id === idToDelete
+        )
+
+        // ✅ ถ้าลบตัวที่เลือกอยู่
+        if (
+          deletedSig &&
+          deletedSig.data === currentSignature
+        ) {
+
+          if (updatedSignatures.length > 0) {
+            setCurrentSignature(updatedSignatures[0].data)
+          } else {
+            setCurrentSignature(null)
+            setSignatureMode('draw')
+          }
+        }
+
+        Swal.fire({
+          icon: 'success',
+          title: 'ลบลายเซ็นแล้ว',
+          timer: 1200,
+          showConfirmButton: false
+        })
+
+      } catch (error) {
+
+        console.error(error)
+
+        Swal.fire({
+          icon: 'error',
+          title: 'เกิดข้อผิดพลาด',
+          text: 'ลบลายเซ็นไม่สำเร็จ'
+        })
       }
     })
   }
 
   const handleInstantSave = async () => {
     if (!currentSignature) return;
-    
+
     Swal.fire({
       title: 'กำลังบันทึกลงคลัง...',
       allowOutsideClick: false,
@@ -242,10 +305,10 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
       id: Date.now().toString(),
       data: currentSignature
     };
-    
+
     const updatedSignatures = [...savedSignatures, newSignatureObj];
-    const success = await onUpdateSignatures(updatedSignatures); 
-    
+    const success = await onUpdateSignatures(updatedSignatures);
+
     if (success) {
       Swal.fire({
         icon: 'success',
@@ -277,7 +340,7 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
 
   return (
     <div className="flex flex-col lg:flex-row gap-8 py-4 font-sarabun text-black bg-white h-full overflow-hidden">
-      
+
       {/* 🔴 ฝั่งซ้าย: เครื่องมืออนุมัติ */}
       <div className="w-full lg:w-[400px] shrink-0 h-full space-y-6 overflow-y-auto pr-2 pb-10 scrollbar-hide">
         <div className="grid grid-cols-2 gap-4 bg-slate-900 p-6 rounded-[1.5rem] text-white shadow-lg shrink-0">
@@ -381,29 +444,32 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
               ) : (
                 <div className="grid grid-cols-2 gap-3 max-h-56 overflow-y-auto pr-1">
                   {savedSignatures.map((sig, index) => (
-                    <div 
-                      key={sig.id} 
+                    <div
+                      key={sig.id}
                       onClick={() => setCurrentSignature(sig.data)}
                       className={`relative border-2 rounded-xl p-2 cursor-pointer transition-all ${currentSignature === sig.data ? 'border-emerald-500 bg-emerald-50 shadow-sm' : 'border-slate-200 bg-white hover:border-blue-300'}`}
                     >
                       {currentSignature === sig.data && (
-                        <div className="absolute top-2 left-2 text-emerald-600">
+                        <div className="absolute top-2 left-2 text-emerald-600 z-10 pointer-events-none">
                           <CheckCircle2 className="size-4" />
                         </div>
                       )}
-                      
-                      <button 
-                        onClick={(e) => { e.preventDefault(); e.stopPropagation(); handleDeleteSignature(sig.id); }}
+
+                      {/* ✅ 2. นำฟังก์ชันลบลายเซ็นมาใช้ และใช้ปุ่ม Button เพื่อลดปัญหากดติดบ้างไม่ติดบ้าง */}
+                      {/* เปลี่ยนตรงนี้ในส่วนของ savedSignatures.map */}
+                      <button
+                        type="button" // ✅ ใส่ type="button" เพื่อกันไม่ให้มันเผลอ submit form
+                        onClick={(e) => handleDeleteSignature(e, sig.id)} // ✅ ส่ง e เข้าไปที่ฟังก์ชัน
                         className="absolute top-2 right-2 text-slate-400 hover:text-red-500 hover:bg-red-50 bg-white shadow-sm border border-slate-100 rounded-full p-1.5 transition-colors z-20"
                       >
                         <Trash2 className="size-3.5" />
                       </button>
 
-                      <div className="h-16 flex items-center justify-center mb-2 mt-4">
+                      <div className="h-16 flex items-center justify-center mb-2 mt-4 pointer-events-none">
                         <img src={sig.data} alt="signature" className="max-h-full max-w-full object-contain mix-blend-multiply" />
                       </div>
-                      
-                      <div className="flex justify-center items-center px-1">
+
+                      <div className="flex justify-center items-center px-1 pointer-events-none">
                         <p className="text-[11px] font-semibold text-slate-600 truncate bg-white px-2 py-0.5 rounded-full border border-slate-100">
                           ลายเซ็น {index + 1}
                         </p>
@@ -426,17 +492,17 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
                   ref={sigCanvas}
                   penColor="#1e3a8a"
                   canvasProps={{ className: 'sigCanvas w-full h-32 md:h-40' }}
-                  onEnd={handleSignatureEnd} 
+                  onEnd={handleSignatureEnd}
                 />
               </div>
               <p className="text-[11px] text-slate-400 text-center">ใช้นิ้วหรือเมาส์วาดลายเซ็นลงในกรอบด้านบน</p>
 
               <div className="pt-3 border-t border-slate-100 flex justify-center">
                 {canSaveMore ? (
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
                     className="text-blue-700 border-blue-200 hover:bg-blue-50 bg-blue-50/50 shadow-sm rounded-xl h-9 px-4 transition-all"
                     onClick={handleInstantSave}
                     disabled={!hasDrawn}
@@ -462,7 +528,7 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
                       <img src={currentSignature} alt="Uploaded" className="max-h-full max-w-full object-contain mix-blend-multiply" />
                       <div className="absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity rounded-xl backdrop-blur-sm">
                         <span className="text-white text-sm font-bold flex items-center gap-1">
-                          <Upload className="size-4"/> คลิกเพื่อเปลี่ยนรูป
+                          <Upload className="size-4" /> คลิกเพื่อเปลี่ยนรูป
                         </span>
                       </div>
                     </>
@@ -476,13 +542,13 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
                   <input type="file" className="hidden" accept="image/png, image/jpeg, image/jpg" onChange={handleSignatureUpload} />
                 </label>
               </div>
-              
+
               <div className="pt-3 border-t border-slate-100 flex justify-center">
                 {canSaveMore ? (
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    size="sm" 
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
                     className="text-blue-700 border-blue-200 hover:bg-blue-50 bg-blue-50/50 shadow-sm rounded-xl h-9 px-4 transition-all"
                     onClick={handleInstantSave}
                     disabled={!currentSignature || !currentSignature.startsWith('data:image')}
@@ -535,8 +601,8 @@ function ApprovalDialogContent({ booking, onApprove, onReject, availableDrivers,
             driverName={selectedDriverName}
             vehiclePlate={vehiclePlate}
             signatureImage={currentSignature}
-            adminName={userProfile?.full_name || userProfile?.name} 
-            startMileage={booking.vehicles?.last_mileage}          
+            adminName={userProfile?.full_name || userProfile?.name}
+            startMileage={booking.vehicles?.last_mileage}
           />
         </div>
       </div>
@@ -553,17 +619,16 @@ export default function ApprovalsPage() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [availableDrivers, setAvailableDrivers] = useState([])
   const [selectedDriverId, setSelectedDriverId] = useState("")
-  
-  // ✅ 2. เพิ่ม State จัดการ Loading
+
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    loadAllData() // ✅ 3. เรียกฟังก์ชันดึงข้อมูลแบบใหม่
+    loadAllData()
 
     const channel = supabase
       .channel('public:bookings')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
-        loadAllData() 
+        loadAllData()
       })
       .subscribe()
 
@@ -581,15 +646,13 @@ export default function ApprovalsPage() {
     fetchUserProfile()
   }, [user])
 
-  // ✅ 4. รวบรวมการดึงข้อมูล 2 เส้น ให้วิ่งพร้อมกันเพื่อความเร็ว
   async function loadAllData() {
     setIsLoading(true);
     try {
-      // ใช้ Promise.all ให้ดึงคิวจอง และ ดึงคนขับ ไปพร้อมๆ กันเลย
       const [bRes, dRes] = await Promise.all([
         supabase
           .from("bookings")
-          .select("*, vehicles(license_plate, brand, model, last_mileage)") 
+          .select("*, vehicles(license_plate, brand, model, last_mileage)")
           .eq("status", "pending")
           .order("created_at", { ascending: true }),
         supabase
@@ -613,7 +676,7 @@ export default function ApprovalsPage() {
       const sigString = JSON.stringify(updatedSignatures);
       const { error } = await supabase.from("profiles").update({ saved_signature: sigString }).eq("id", user.id);
       if (error) throw error;
-      
+
       setUserProfile(prev => ({ ...prev, saved_signature: sigString }));
       return true;
     } catch (e) {
@@ -658,7 +721,7 @@ export default function ApprovalsPage() {
 
       Swal.fire({ icon: 'success', title: 'อนุมัติสำเร็จ!', text: 'พิจารณาอนุมัติและมอบหมายงานเรียบร้อย', confirmButtonColor: '#0f172a' });
 
-      loadAllData(); // ดึงข้อมูลใหม่หลังอนุมัติเสร็จ
+      loadAllData();
       setSelectedBooking(null);
       setSelectedDriverId("");
 
@@ -670,7 +733,7 @@ export default function ApprovalsPage() {
 
   async function rejectBooking(id) {
     const { error } = await supabase.from("bookings").update({ status: "rejected" }).eq("id", id)
-    
+
     if (!error) {
       if (user) {
         await supabase.from('audit_logs').insert([{
@@ -685,7 +748,7 @@ export default function ApprovalsPage() {
       }
 
       Swal.fire({ icon: 'info', title: 'ดำเนินการแล้ว', text: 'ปฏิเสธคำขอจองเรียบร้อย', confirmButtonColor: '#0f172a' });
-      loadAllData(); 
+      loadAllData();
       setSelectedBooking(null);
     }
   }
@@ -698,15 +761,14 @@ export default function ApprovalsPage() {
   }
 
   return (
-    // ✅ 5. แก้ไขการโหลดพื้นหลังให้ใช้ Next Image เพื่อลบอาการหน้าจอค้าง
     <div className="font-sarabun text-black min-h-screen relative bg-slate-900">
-      
-      <Image 
-        src="/images/image.png" 
-        alt="Background" 
-        fill 
-        priority 
-        className="object-cover z-0 opacity-40" 
+
+      <Image
+        src="/images/image.png"
+        alt="Background"
+        fill
+        priority
+        className="object-cover z-0 opacity-40"
       />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
@@ -716,17 +778,16 @@ export default function ApprovalsPage() {
 
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-8 relative z-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-2">
-          
+
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">
                 พิจารณาคำขอใช้รถยนต์
               </h1>
-              {/* ✅ 6. อัปเดตปุ่มรีเฟรชให้หมุนติ้วตอนกำลังดึงข้อมูล */}
-              <Button 
-                variant="outline" 
-                size="icon" 
-                onClick={loadAllData} 
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={loadAllData}
                 disabled={isLoading}
                 className="h-8 w-8 rounded-full border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
                 title="รีเฟรชข้อมูล"
@@ -762,22 +823,38 @@ export default function ApprovalsPage() {
         )}
       </div>
 
-      <Dialog open={!!selectedBooking} onOpenChange={handleOpenChange}>
-        <DialogContent className="max-w-[98vw] lg:max-w-[1400px] p-0 overflow-hidden border-none rounded-[2.5rem] shadow-2xl bg-white max-h-[92vh] flex flex-col">
+      <Dialog
+        modal={true}
+        open={!!selectedBooking}
+        onOpenChange={(open) => {
+
+          // ✅ ถ้า SweetAlert เปิดอยู่ ห้าม Dialog ปิด
+          if (Swal.isVisible()) return
+
+          handleOpenChange(open)
+        }}
+      >
+        <DialogContent
+          onPointerDownOutside={(e) => e.preventDefault()}
+          onInteractOutside={(e) => e.preventDefault()}
+          className="max-w-[98vw] lg:max-w-[1400px] p-0 overflow-hidden border-none rounded-[2.5rem] shadow-2xl bg-white max-h-[92vh] flex flex-col"
+        >
           <DialogHeader className="p-6 bg-[#0f172a] text-white text-center shrink-0 relative flex flex-row items-center justify-center">
             <DialogTitle className="text-2xl font-bold font-sarabun tracking-tight mx-auto">
               แบบฟอร์มตรวจสอบและพิจารณาอนุมัติ
             </DialogTitle>
-            
+
             <DialogDescription className="hidden">
               รายละเอียดการตรวจสอบและอนุมัติคำขอใช้รถยนต์
             </DialogDescription>
-            
+
             <button
               onClick={() => handleOpenChange(false)}
               className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-2 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-4 py-2 rounded-xl transition-all font-bold"
             >
-              <span className="text-sm hidden sm:inline">ปิดหน้าต่าง</span>
+              <span className="text-sm hidden sm:inline">
+                ปิดหน้าต่าง
+              </span>
               <X className="size-5" />
             </button>
           </DialogHeader>
@@ -792,7 +869,7 @@ export default function ApprovalsPage() {
                 selectedDriverId={selectedDriverId}
                 setSelectedDriverId={setSelectedDriverId}
                 userProfile={userProfile}
-                onUpdateSignatures={handleUpdateSignatures} 
+                onUpdateSignatures={handleUpdateSignatures}
               />
             )}
           </div>

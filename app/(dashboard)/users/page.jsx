@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Image from "next/image" // ✅ 1. นำเข้า Next Image
+import Image from "next/image" 
 import { useAuth } from "@/lib/auth-context" 
-import { cn } from "@/lib/utils" // ✅ นำเข้า cn 
+import { cn } from "@/lib/utils" 
 import { 
   Users, ShieldCheck, UserCog, Search, 
   Pencil, Loader2, Mail, Building2, UserCheck, 
-  Info, Filter, CheckCircle2, UserCircle, Briefcase, RefreshCw // ✅ เพิ่ม RefreshCw
+  Info, Filter, CheckCircle2, UserCircle, Briefcase, RefreshCw 
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header" 
 import { Button } from "@/components/ui/button"
@@ -55,7 +55,6 @@ export default function UsersManagementPage() {
     if(user) loadAllData() 
   }, [user])
 
-  // ✅ 2. รวบรวมการดึงข้อมูล 2 อย่างให้อยู่ในฟังก์ชันเดียวกัน (Promise.all)
   async function loadAllData() {
     setLoading(true);
     try {
@@ -142,7 +141,6 @@ export default function UsersManagementPage() {
   }
 
   return (
-    // ✅ 3. ปรับพื้นหลังไปใช้ Next Image
     <div className="min-h-screen font-sarabun text-black relative bg-slate-900">
       
       <Image 
@@ -171,7 +169,6 @@ export default function UsersManagementPage() {
           <div className="space-y-1">
             <div className="flex items-center gap-3">
               <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">จัดการสมาชิกและสิทธิ์</h1>
-              {/* ✅ เพิ่มปุ่มรีเฟรชข้อมูล */}
               <Button 
                 variant="outline" 
                 size="icon" 
@@ -246,8 +243,14 @@ export default function UsersManagementPage() {
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-xl" 
-                          onClick={() => setEditUser({...user, status: user.status || 'active'})} 
+                          className="text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-xl transition-all" 
+                          // ✅ แก้ไขตรงนี้: ดักค่าว่าง ป้องกันการเปลี่ยนจาก Uncontrolled เป็น Controlled
+                          onClick={() => setEditUser({
+                            ...user, 
+                            status: user.status || 'active',
+                            role: user.role || 'user',
+                            department: user.department || ''
+                          })} 
                         >
                           <Pencil className="size-4" />
                         </Button>
@@ -321,7 +324,7 @@ export default function UsersManagementPage() {
                   <div className="space-y-2">
                     <Label className="font-bold text-slate-600">บทบาทหน้าที่ (Role)</Label>
                     <Select 
-                      value={editUser?.role} 
+                      value={editUser?.role || "user"} // ✅ ดักค่าว่างซ้ำอีกชั้นใน Select
                       onValueChange={(v) => setEditUser({...editUser, role: v})}
                     >
                       <SelectTrigger className="rounded-xl h-11 border-slate-200 bg-white text-black">
