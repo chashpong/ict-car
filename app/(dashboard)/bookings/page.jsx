@@ -1,11 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image" 
 import { 
   Car, Search, Eye, CalendarIcon, Clock, Trash2, 
   User, Phone, MapPin, CheckCircle2, 
   AlertCircle, Info, Loader2, Users, ClipboardList,
-  FileText, Flag, XCircle 
+  FileText, Flag, XCircle, RefreshCw // ✅ นำเข้าไอคอน RefreshCw
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -66,12 +67,12 @@ function TimePickerClock({ value, onChange }) {
         <div className="flex h-[240px] divide-x border-b bg-white font-sarabun text-black">
           <div className="flex flex-1 flex-col overflow-y-auto p-2 scrollbar-hide">
             {hours.map((h) => (
-              <Button key={h} variant={currentH === h ? "default" : "ghost"} size="sm" className={cn("mb-1", currentH === h && "bg-blue-600")} onClick={() => onChange(`${h}:${currentM}`)}>{h}</Button>
+              <Button key={h} variant={currentH === h ? "default" : "ghost"} size="sm" className={cn("mb-1", currentH === h && "bg-blue-600 text-white")} onClick={() => onChange(`${h}:${currentM}`)}>{h}</Button>
             ))}
           </div>
           <div className="flex flex-1 flex-col p-2">
             {minutes.map((m) => (
-              <Button key={m} variant={currentM === m ? "default" : "ghost"} size="sm" className={cn("mb-1", currentM === m && "bg-blue-600")} onClick={() => onChange(`${currentH}:${m}`)}>{m}</Button>
+              <Button key={m} variant={currentM === m ? "default" : "ghost"} size="sm" className={cn("mb-1", currentM === m && "bg-blue-600 text-white")} onClick={() => onChange(`${currentH}:${m}`)}>{m}</Button>
             ))}
           </div>
         </div>
@@ -100,27 +101,15 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
 // --- 3. ฟอร์มการจอง (BookingForm) ---
 function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) { 
   const [formData, setFormData] = useState({
-    user_name: "", 
-    position: "", 
-    department: "", 
-    start_date: format(new Date(), 'yyyy-MM-dd'), 
-    end_date: format(new Date(), 'yyyy-MM-dd'), 
-    start_time: "08:30", 
-    end_time: "16:30", 
-    destination: "", 
-    origin: "หน่วยงานต้นสังกัด", 
-    purpose: "", 
-    duty_details: "", 
-    passengers: 1,
-    vehicle_id: "",
-    vehicle_type_preference: "ไม่ระบุ",
-    contact_phone: "" 
+    user_name: "", position: "", department: "", 
+    start_date: format(new Date(), 'yyyy-MM-dd'), end_date: format(new Date(), 'yyyy-MM-dd'), 
+    start_time: "08:30", end_time: "16:30", 
+    destination: "", origin: "หน่วยงานต้นสังกัด", purpose: "", duty_details: "", 
+    passengers: 1, vehicle_id: "", vehicle_type_preference: "ไม่ระบุ", contact_phone: "" 
   })
 
   const getVehicleStatus = (car) => {
-    if (car.status !== 'available') {
-      return { status: 'busy', reason: car.status === 'maintenance' ? 'อยู่ระหว่างซ่อมบำรุง' : 'กำลังปฏิบัติงาน' };
-    }
+    if (car.status !== 'available') return { status: 'busy', reason: car.status === 'maintenance' ? 'อยู่ระหว่างซ่อมบำรุง' : 'กำลังปฏิบัติงาน' };
     const startReq = parse(`${formData.start_date} ${formData.start_time}`, 'yyyy-MM-dd HH:mm', new Date());
     const endReq = parse(`${formData.end_date} ${formData.end_time}`, 'yyyy-MM-dd HH:mm', new Date());
     const conflict = allBookings.find(b => {
@@ -286,7 +275,6 @@ function BookingTimelineDialog({ booking, onClose }) {
       if (stepName === 'approved') return 'rejected'; 
       return 'pending'; 
     }
-
     const flow = ['pending', 'approved', 'started', 'completed'];
     const currentIndex = flow.indexOf(status);
     const stepIndex = flow.indexOf(stepName);
@@ -304,13 +292,10 @@ function BookingTimelineDialog({ booking, onClose }) {
   ];
 
   return (
-    // ✅ 1. เพิ่ม bg-white และใส่ style พื้นหลังลายแพทเทิร์น 
     <div 
       className="font-sarabun text-black flex flex-col h-full w-full bg-white overflow-hidden rounded-[2.5rem] relative"
       style={{ backgroundImage: "url('/images/pattern-bg.png')", backgroundRepeat: "repeat" }}
     >
-      
-      {/* ส่วนหัวของ ป๊อปอัป (สีเข้ม) */}
       <div className="bg-[#0f172a] p-6 md:p-8 text-white shrink-0 relative z-10 shadow-md">
         <div className="flex justify-between items-start mb-4">
           <div>
@@ -333,7 +318,6 @@ function BookingTimelineDialog({ booking, onClose }) {
         </div>
       </div>
 
-      {/* ส่วนกลางของ Timeline แบบไถสกอร์เลื่อนขึ้นลงได้ */}
       <div className="p-6 md:p-8 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative z-10">
         <h4 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
           <Info className="size-5 text-blue-600" /> ลำดับสถานะการดำเนินการ
@@ -362,13 +346,9 @@ function BookingTimelineDialog({ booking, onClose }) {
 
             return (
               <div key={step.id} className="relative flex items-center md:justify-between md:odd:flex-row-reverse group">
-                
-                {/* ไอคอน (ตรงกลาง) */}
                 <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 shrink-0 md:absolute md:left-1/2 md:-translate-x-1/2 shadow-sm z-10 transition-colors duration-300 ${bgColor}`}>
                   {step.icon}
                 </div>
-                
-                {/* กล่องข้อความ (ด้านข้าง) */}
                 <div className={`ml-4 md:ml-0 w-[calc(100%-3.5rem)] md:w-[calc(50%-3rem)] p-4 rounded-2xl shadow-sm border transition-all duration-300 ${status === 'current' ? 'border-blue-200 shadow-blue-100 scale-[1.02] bg-white' : 'border-slate-100 bg-white/90 backdrop-blur-sm'} ${status === 'rejected' ? 'border-rose-200 bg-rose-50' : ''}`}>
                   <div className="flex items-center justify-between mb-1">
                     <h5 className={`font-extrabold ${textColor}`}>{step.title}</h5>
@@ -377,8 +357,6 @@ function BookingTimelineDialog({ booking, onClose }) {
                   </div>
                   <p className={`text-xs font-medium leading-relaxed ${descColor}`}>{step.desc}</p>
                 </div>
-                
-                {/* ดันกรอบ Layout ให้อยู่ถูกฝั่งสำหรับหน้าจอ Desktop */}
                 <div className="hidden md:block md:w-[calc(50%-3rem)]"></div>
               </div>
             );
@@ -386,7 +364,6 @@ function BookingTimelineDialog({ booking, onClose }) {
         </div>
       </div>
 
-      {/* ✅ 2. ส่วน Footer ลบ bg-white ทิ้ง และปรับขอบให้เป็นแบบโปร่งแสง */}
       <div className="p-4 bg-white/60 backdrop-blur-md border-t border-slate-200/60 flex justify-end shrink-0 relative z-10">
         <Button onClick={onClose} className="rounded-xl px-8 font-bold bg-white text-slate-600 border border-slate-200 shadow-sm hover:bg-slate-50 hover:text-slate-800">
           ปิดหน้าต่าง
@@ -407,7 +384,6 @@ export default function BookingsPage() {
   const [createOpen, setCreateOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
 
-  // State ควบคุมป๊อปอัป Timeline
   const [viewBooking, setViewBooking] = useState(null)
 
   useEffect(() => {
@@ -509,8 +485,16 @@ export default function BookingsPage() {
   })
 
   return (
-    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
-      <div className="absolute inset-0 bg-black/60 z-0"></div>
+    <div className="min-h-screen font-sarabun text-black relative bg-slate-900">
+      
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
+      <div className="absolute inset-0 bg-black/50 z-0"></div>
       
       <div className="relative z-10 border-b border-white/10">
         <PageHeader title="การจองรถ" />
@@ -518,8 +502,8 @@ export default function BookingsPage() {
 
       <div className="p-4 md:p-8 relative z-10">
         <div className="flex flex-col gap-2 mb-8">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">การจองรถยนต์ส่วนกลาง</h1>
-          <p className="text-white/80 text-sm">ระบบบริหารจัดการและจองยานพาหนะอิเล็กทรอนิกส์ (แบบฟอร์ม ๓)</p>
+          <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">การจองรถยนต์ส่วนกลาง</h1>
+          <p className="text-white/90 text-sm drop-shadow-md">ระบบบริหารจัดการและจองยานพาหนะอิเล็กทรอนิกส์ (แบบฟอร์ม ๓)</p>
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
@@ -546,6 +530,18 @@ export default function BookingsPage() {
                 <SelectItem value="completed">เสร็จสิ้น</SelectItem>
               </SelectContent>
             </Select>
+
+            {/* ✅ 3. ปุ่มกดรีเฟรชข้อมูล (Refresh Button) */}
+            <Button
+              variant="outline"
+              size="icon"
+              onClick={loadData}
+              disabled={isLoading}
+              className="h-12 w-12 rounded-2xl bg-white border-none shadow-sm text-slate-600 hover:text-blue-600 shrink-0 transition-transform active:scale-95"
+              title="โหลดข้อมูลใหม่"
+            >
+              <RefreshCw className={cn("size-5", isLoading && "animate-spin text-blue-600")} />
+            </Button>
           </div>
 
           <Dialog open={createOpen} onOpenChange={setCreateOpen}>
@@ -568,11 +564,11 @@ export default function BookingsPage() {
           </Dialog>
         </div>
 
-        <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
+        <Card className="border-none shadow-sm overflow-hidden bg-white/95 backdrop-blur-sm rounded-[2rem]">
           <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50/50">
-                <TableRow className="border-b border-slate-100">
+              <TableHeader className="bg-slate-50/80">
+                <TableRow className="border-b border-slate-200/50">
                   <TableHead className="pl-6 py-5 font-bold text-slate-500 uppercase text-[11px] tracking-widest">เลขที่</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">ผู้ขอ / หน่วยงาน</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">วัตถุประสงค์</TableHead>
@@ -591,7 +587,7 @@ export default function BookingsPage() {
                 ) : filtered.length === 0 ? (
                   <TableRow><TableCell colSpan={10} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
                 ) : filtered.map((b) => (
-                  <TableRow key={b.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-50 group">
+                  <TableRow key={b.id} className="hover:bg-blue-50/50 transition-colors border-b border-slate-100/50 group">
                     <TableCell className="pl-6 font-mono text-xs font-bold text-slate-500 uppercase">
                       REQ-{b.id.split('-')[0]}
                     </TableCell>
@@ -633,14 +629,14 @@ export default function BookingsPage() {
                           variant="ghost" 
                           size="icon" 
                           onClick={() => setViewBooking(b)} 
-                          className="text-blue-500 hover:bg-blue-50 hover:text-blue-600 rounded-xl h-9 w-9"
+                          className="text-blue-500 hover:bg-blue-100 hover:text-blue-700 rounded-xl h-9 w-9"
                           title="ดูสถานะคำขอ"
                         >
                           <Eye className="size-4" />
                         </Button>
 
                         {b.status === 'pending' && (
-                          <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} className="text-rose-500 hover:bg-rose-50 rounded-xl h-9 w-9">
+                          <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} className="text-rose-500 hover:bg-rose-100 hover:text-rose-700 rounded-xl h-9 w-9">
                             <Trash2 className="size-4" />
                           </Button>
                         )}

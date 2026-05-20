@@ -1,9 +1,12 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image" // ✅ 1. นำเข้า Next Image
+import { cn } from "@/lib/utils" // ✅ นำเข้า cn
 import { 
   History, Search, Clock, User, FileText, 
-  Activity, ArrowRight, Database, Eye, ShieldAlert // ✅ เปลี่ยน ArrowRightRight เป็น ArrowRight
+  Activity, ArrowRight, Database, Eye, ShieldAlert, 
+  RefreshCw, Loader2 // ✅ เพิ่ม RefreshCw และ Loader2
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -75,7 +78,16 @@ export default function AuditLogsPage() {
   })
 
   return (
-    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 2. ปรับพื้นหลังให้ใช้ Next Image เพื่อลบอาการหน้าค้าง
+    <div className="min-h-screen font-sarabun text-black relative bg-slate-900">
+      
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
       
       <div className="relative z-10 border-b border-white/10">
@@ -85,30 +97,43 @@ export default function AuditLogsPage() {
       <div className="p-4 md:p-8 relative z-10 space-y-6">
         
         <div className="flex flex-col gap-2 mb-4">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3">
-            <ShieldAlert className="size-8 text-blue-400" /> ประวัติการทำงาน (Audit Trail)
-          </h1>
-          <p className="text-white/80 text-sm mt-1 font-medium">
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-extrabold tracking-tight text-white flex items-center gap-3 drop-shadow-md">
+              <ShieldAlert className="size-8 text-blue-400" /> ประวัติการทำงาน (Audit Trail)
+            </h1>
+            {/* ✅ 3. ปุ่มรีเฟรชข้อมูล */}
+            <Button 
+              variant="outline" 
+              size="icon" 
+              onClick={fetchLogs} 
+              disabled={loading}
+              className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+              title="รีเฟรชข้อมูล"
+            >
+              <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+            </Button>
+          </div>
+          <p className="text-white/90 text-sm mt-1 font-medium drop-shadow-sm">
             ตรวจสอบการสร้าง, แก้ไข, ลบ หรือการพิจารณาอนุมัติต่างๆ ในระบบอย่างโปร่งใส
           </p>
         </div>
 
-        <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
-          <CardHeader className="bg-white border-b py-5 px-6 flex flex-col sm:flex-row sm:items-center gap-4">
+        <Card className="border-none shadow-sm overflow-hidden bg-white/95 backdrop-blur-sm rounded-[2rem]">
+          <CardHeader className="bg-white/80 border-b py-5 px-6 flex flex-col sm:flex-row sm:items-center gap-4">
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input
                 placeholder="ค้นหาชื่อผู้ใช้งาน หรือ ID รายการ..."
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                className="pl-11 h-12 rounded-2xl border-slate-200 shadow-sm focus:ring-2 focus:ring-blue-500 bg-slate-50 text-black"
+                className="pl-11 h-12 rounded-2xl border-none shadow-sm focus:ring-2 focus:ring-blue-500 bg-slate-50 text-black"
               />
             </div>
             <Select value={actionFilter} onValueChange={setActionFilter}>
-              <SelectTrigger className="w-[200px] h-12 rounded-2xl border-slate-200 shadow-sm bg-white font-bold">
+              <SelectTrigger className="w-[200px] h-12 rounded-2xl border-none shadow-sm bg-slate-50 text-slate-700 font-bold">
                 <SelectValue placeholder="ทุกการกระทำ" />
               </SelectTrigger>
-              <SelectContent className="font-sarabun text-black bg-white">
+              <SelectContent className="font-sarabun text-black bg-white border-slate-200">
                 <SelectItem value="all">การกระทำทั้งหมด</SelectItem>
                 <SelectItem value="CREATE">สร้างข้อมูลใหม่</SelectItem>
                 <SelectItem value="UPDATE">แก้ไขข้อมูล</SelectItem>
@@ -121,8 +146,8 @@ export default function AuditLogsPage() {
 
           <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50/50">
-                <TableRow className="border-b border-slate-100">
+              <TableHeader className="bg-slate-50/80">
+                <TableRow className="border-b border-slate-200/50">
                   <TableHead className="pl-6 py-5 font-bold text-slate-500 uppercase text-[11px] tracking-widest">วัน/เวลา</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest py-5">ผู้ทำรายการ</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest py-5">การกระทำ</TableHead>
@@ -133,15 +158,24 @@ export default function AuditLogsPage() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={6} className="h-48 text-center text-slate-500 font-medium">กำลังโหลดข้อมูลประวัติ...</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-48 text-center text-slate-500 font-medium">
+                      <Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />
+                      กำลังโหลดข้อมูลประวัติ...
+                    </TableCell>
+                  </TableRow>
                 ) : filteredLogs.length === 0 ? (
-                  <TableRow><TableCell colSpan={6} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติกิจกรรม</TableCell></TableRow>
+                  <TableRow>
+                    <TableCell colSpan={6} className="h-48 text-center text-slate-400">
+                      ไม่พบประวัติกิจกรรม
+                    </TableCell>
+                  </TableRow>
                 ) : filteredLogs.map((log) => {
-                  const action = actionConfig[log.action] || { label: log.action, color: "bg-slate-100 text-slate-700" };
+                  const action = actionConfig[log.action] || { label: log.action, color: "bg-slate-100 text-slate-700 border-slate-200" };
                   const entityLabel = entityConfig[log.entity_type] || log.entity_type;
 
                   return (
-                    <TableRow key={log.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
+                    <TableRow key={log.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100/50">
                       <TableCell className="pl-6 py-4">
                         <div className="flex items-center gap-2 text-slate-600 font-medium text-xs">
                           <Clock className="size-3.5 text-slate-400" />
@@ -175,7 +209,7 @@ export default function AuditLogsPage() {
                           variant="ghost" 
                           size="sm"
                           onClick={() => setSelectedLog(log)} 
-                          className="text-blue-600 hover:bg-blue-50 rounded-xl font-bold text-xs px-4"
+                          className="text-blue-600 hover:bg-blue-100 hover:text-blue-700 rounded-xl font-bold text-xs px-4 transition-all"
                         >
                           <Eye className="size-3.5 mr-1.5" /> ดูข้อมูล
                         </Button>
@@ -190,7 +224,7 @@ export default function AuditLogsPage() {
 
         {/* Dialog แสดงรายละเอียด JSON */}
         <Dialog open={!!selectedLog} onOpenChange={(open) => !open && setSelectedLog(null)}>
-          <DialogContent className="sm:max-w-2xl rounded-[2rem] border-none bg-white text-black shadow-2xl p-0 overflow-hidden">
+          <DialogContent className="sm:max-w-3xl rounded-[2.5rem] border-none bg-white text-black shadow-2xl p-0 overflow-hidden">
             <DialogHeader className="p-6 bg-[#0f172a] text-white">
               <DialogTitle className="text-xl font-bold flex items-center gap-2">
                  <FileText className="size-5 text-blue-400" /> ข้อมูลเชิงลึก (Audit Details)
@@ -198,21 +232,21 @@ export default function AuditLogsPage() {
               <DialogDescription className="hidden">แสดงรายละเอียดข้อมูลที่ถูกเปลี่ยนแปลง</DialogDescription>
             </DialogHeader>
             
-            <div className="p-6 space-y-6 font-sarabun bg-slate-50/50 max-h-[70vh] overflow-y-auto">
+            <div className="p-6 space-y-6 font-sarabun bg-slate-50/50 max-h-[70vh] overflow-y-auto custom-scrollbar">
               {selectedLog && (
                 <>
-                  <div className="flex flex-wrap gap-4 bg-white p-4 rounded-2xl border border-slate-100 shadow-sm">
+                  <div className="flex flex-wrap gap-4 bg-white p-5 rounded-2xl border border-slate-100 shadow-sm">
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ผู้ทำรายการ</p>
-                      <p className="font-bold text-slate-800">{selectedLog.user_name}</p>
+                      <p className="font-bold text-slate-800 text-base">{selectedLog.user_name}</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">เวลา</p>
-                      <p className="font-bold text-slate-800">{formatThaiDateTime(selectedLog.created_at)}</p>
+                      <p className="font-bold text-slate-800 text-base">{formatThaiDateTime(selectedLog.created_at)}</p>
                     </div>
                     <div>
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">รหัสอ้างอิง</p>
-                      <p className="font-mono font-bold text-blue-600">{selectedLog.entity_id}</p>
+                      <p className="font-mono font-bold text-blue-600 text-base">{selectedLog.entity_id}</p>
                     </div>
                   </div>
 
@@ -222,8 +256,8 @@ export default function AuditLogsPage() {
                       <div className="flex items-center gap-2 text-rose-600 font-bold text-sm bg-rose-50 px-3 py-1.5 rounded-lg w-fit">
                         <Activity className="size-4" /> ข้อมูลเดิม (Before)
                       </div>
-                      <div className="bg-slate-900 rounded-2xl p-4 overflow-x-auto">
-                        <pre className="text-emerald-400 font-mono text-xs">
+                      <div className="bg-slate-900 rounded-2xl p-5 overflow-x-auto shadow-inner">
+                        <pre className="text-emerald-400 font-mono text-xs leading-relaxed">
                           {selectedLog.old_data ? JSON.stringify(selectedLog.old_data, null, 2) : "ไม่มีข้อมูลเดิม (สร้างใหม่)"}
                         </pre>
                       </div>
@@ -232,10 +266,10 @@ export default function AuditLogsPage() {
                     {/* ข้อมูลใหม่ */}
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-emerald-600 font-bold text-sm bg-emerald-50 px-3 py-1.5 rounded-lg w-fit">
-                        <ArrowRight className="size-4" /> ข้อมูลใหม่ (After) {/* ✅ เปลี่ยนไอคอนตรงนี้ด้วย */}
+                        <ArrowRight className="size-4" /> ข้อมูลใหม่ (After)
                       </div>
-                      <div className="bg-slate-900 rounded-2xl p-4 overflow-x-auto">
-                        <pre className="text-blue-400 font-mono text-xs">
+                      <div className="bg-slate-900 rounded-2xl p-5 overflow-x-auto shadow-inner">
+                        <pre className="text-blue-400 font-mono text-xs leading-relaxed">
                           {selectedLog.new_data ? JSON.stringify(selectedLog.new_data, null, 2) : "ถูกลบไปแล้ว"}
                         </pre>
                       </div>

@@ -1,7 +1,12 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
-import { Plus, Search, Wrench, CalendarClock, Camera, Loader2, CheckCircle2, Pencil } from "lucide-react"
+import Image from "next/image" // ✅ 1. นำเข้า Next Image
+import { cn } from "@/lib/utils" // ✅ นำเข้า cn
+import { 
+  Plus, Search, Wrench, CalendarClock, Camera, 
+  Loader2, CheckCircle2, Pencil, RefreshCw // ✅ นำเข้า RefreshCw
+} from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -234,20 +239,40 @@ export default function MaintenancePage() {
   const [loading, setLoading] = useState(true)
   const [isSaving, setIsSaving] = useState(false)
   const [editRecord, setEditRecord] = useState(null) 
-  const [userProfile, setUserProfile] = useState(null) // ✅ เก็บข้อมูล Profile
+  const [userProfile, setUserProfile] = useState(null)
 
   const { user } = useAuth()
 
   useEffect(() => {
-    // ✅ ดึงชื่อของแอดมิน เพื่อเอาไปลง Log
-    async function fetchUserProfile() {
-      if (!user?.id) return;
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) setUserProfile(data)
-    }
-    fetchUserProfile()
-    fetchData()
+    if (user) loadAllData();
   }, [user])
+
+  // ✅ 2. รวบรวมการดึงข้อมูล 3 อย่าง ให้อยู่ในรอบเดียว (Promise.all)
+  async function loadAllData() {
+    setLoading(true);
+    try {
+      const promises = [
+        supabase.from("maintenance").select("*").order("date", { ascending: false }),
+        supabase.from("vehicles").select("*").order("license_plate", { ascending: true })
+      ];
+
+      // ดึง Profile แอดมินถ้ายังไม่มี
+      if (user?.id && !userProfile) {
+        promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
+      }
+
+      const results = await Promise.all(promises);
+
+      if (results[0].data) setMaintenanceRecords(results[0].data);
+      if (results[1].data) setVehicles(results[1].data);
+      if (results[2]?.data) setUserProfile(results[2].data);
+
+    } catch (error) {
+      console.error("Error fetching data:", error);
+    } finally {
+      setLoading(false);
+    }
+  }
 
   if (!user || user.role !== "admin") {
     return (
@@ -259,27 +284,6 @@ export default function MaintenancePage() {
         <p className="text-slate-500 mt-2">หน้านี้สงวนไว้สำหรับผู้ดูแลระบบ (Admin) เท่านั้น</p>
       </div>
     )
-  }
-
-  async function fetchData() {
-    try {
-      setLoading(true)
-      const [{ data: maintenanceData, error: maintenanceError }, { data: vehiclesData, error: vehiclesError }] =
-        await Promise.all([
-          supabase.from("maintenance").select("*").order("date", { ascending: false }),
-          supabase.from("vehicles").select("*").order("license_plate", { ascending: true }),
-        ])
-
-      if (maintenanceError) console.error(maintenanceError)
-      if (vehiclesError) console.error(vehiclesError)
-
-      setMaintenanceRecords(maintenanceData || [])
-      setVehicles(vehiclesData || [])
-    } catch (error) {
-      console.error(error)
-    } finally {
-      setLoading(false)
-    }
   }
 
   async function handleSaveMaintenance(payload) {
@@ -296,7 +300,6 @@ export default function MaintenancePage() {
       };
 
       if (payload.id) {
-        // 📝 กรณีอัปเดตรายการซ่อมเดิม
         const oldData = maintenanceRecords.find(m => m.id === payload.id);
         const { data, error: updateError } = await supabase
           .from('maintenance')
@@ -309,7 +312,6 @@ export default function MaintenancePage() {
           throw new Error("อัปเดตไม่ได้! ตาราง maintenance ใน Supabase ปิดกั้นสิทธิ์ UPDATE (RLS Policy)");
         }
 
-        // บันทึก Log การอัปเดต
         if (user) {
           await supabase.from('audit_logs').insert([{
             user_id: user.id,
@@ -325,16 +327,13 @@ export default function MaintenancePage() {
         Swal.fire({ icon: 'success', title: 'อัปเดตสำเร็จ', timer: 1500, showConfirmButton: false });
       
       } else {
-        // 📝 กรณีเพิ่มรายการซ่อมใหม่
         const { data: insertedData, error: insertError } = await supabase.from('maintenance').insert([dataToSave]).select().single();
         if (insertError) throw insertError;
 
-        // อัปเดตสถานะรถเป็น ซ่อมบำรุง
         await supabase.from('vehicles')
           .update({ status: 'maintenance' })
           .eq('id', payload.vehicle_id);
 
-        // บันทึก Log การสร้าง
         if (user && insertedData) {
           await supabase.from('audit_logs').insert([{
             user_id: user.id,
@@ -351,7 +350,7 @@ export default function MaintenancePage() {
 
       setDialogOpen(false); 
       setEditRecord(null); 
-      fetchData(); 
+      loadAllData(); // ✅ เปลี่ยนมาใช้ loadAllData
 
     } catch (error) {
       console.error("Error saving maintenance:", error);
@@ -380,7 +379,6 @@ export default function MaintenancePage() {
             
           if (error) throw error;
           
-          // 📝 บันทึก Log ว่ารถซ่อมเสร็จแล้ว (อัปเดตสถานะรถ)
           if (user) {
             await supabase.from('audit_logs').insert([{
               user_id: user.id,
@@ -394,7 +392,7 @@ export default function MaintenancePage() {
           }
 
           Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: `เปลี่ยนสถานะรถ ${plate} เป็นว่างพร้อมใช้แล้ว`, timer: 2000, showConfirmButton: false });
-          fetchData(); 
+          loadAllData(); // ✅ เปลี่ยนมาใช้ loadAllData
         } catch (error) {
           Swal.fire('ข้อผิดพลาด', error.message, 'error');
         }
@@ -425,9 +423,16 @@ export default function MaintenancePage() {
   }, [vehicles])
 
   return (
-    // ✅ อัปเดตพื้นหลังของหน้าซ่อมบำรุง ให้เป็น Theme เดียวกัน
-    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 3. อัปเดตพื้นหลังให้ใช้ Component Image
+    <div className="min-h-screen font-sarabun text-black relative bg-slate-900">
       
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
       <div className="relative z-10 border-b border-white/10">
@@ -436,9 +441,22 @@ export default function MaintenancePage() {
 
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-6 max-w-7xl mx-auto relative z-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-extrabold text-white tracking-tight">ระบบซ่อมบำรุง</h1>
-            <p className="text-sm font-medium text-white/80 mt-1">บันทึกประวัติ อัปเดตค่าใช้จ่าย และจัดการรถเสีย</p>
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold text-white tracking-tight drop-shadow-md">ระบบซ่อมบำรุง</h1>
+              {/* ✅ เพิ่มปุ่มรีเฟรช */}
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={loadAllData} 
+                disabled={loading}
+                className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+                title="รีเฟรชข้อมูล"
+              >
+                <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+              </Button>
+            </div>
+            <p className="text-sm font-medium text-white/90 mt-1 drop-shadow-sm">บันทึกประวัติ อัปเดตค่าใช้จ่าย และจัดการรถเสีย</p>
           </div>
 
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if(!open) setEditRecord(null); }}>
@@ -474,13 +492,13 @@ export default function MaintenancePage() {
         </div>
 
         <div className="grid gap-4 sm:grid-cols-3">
-          <Card className="border-none shadow-sm rounded-3xl bg-white border-l-4 border-l-blue-500 overflow-hidden">
+          <Card className="border-none shadow-sm rounded-3xl bg-white/95 backdrop-blur-sm border-l-4 border-l-blue-500 overflow-hidden">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
                 <Wrench className="size-6" />
               </div>
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">รายการซ่อมทั้งหมด</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">รายการซ่อมทั้งหมด</p>
                 <p className="text-3xl font-extrabold text-slate-900 leading-none mt-1">
                   {maintenanceRecords.length} <span className="text-sm font-medium text-slate-500">รายการ</span>
                 </p>
@@ -488,13 +506,13 @@ export default function MaintenancePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-sm rounded-3xl bg-white border-l-4 border-l-rose-500 overflow-hidden">
+          <Card className="border-none shadow-sm rounded-3xl bg-white/95 backdrop-blur-sm border-l-4 border-l-rose-500 overflow-hidden">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
                 <CalendarClock className="size-6" />
               </div>
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">รถรอซ่อม</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">รถรอซ่อม</p>
                 <p className="text-3xl font-extrabold text-slate-900 leading-none mt-1">
                   {maintenanceVehicleCount} <span className="text-sm font-medium text-slate-500">คัน</span>
                 </p>
@@ -502,13 +520,13 @@ export default function MaintenancePage() {
             </CardContent>
           </Card>
 
-          <Card className="border-none shadow-sm rounded-3xl bg-white border-l-4 border-l-amber-500 overflow-hidden">
+          <Card className="border-none shadow-sm rounded-3xl bg-white/95 backdrop-blur-sm border-l-4 border-l-amber-500 overflow-hidden">
             <CardContent className="p-5 flex items-center gap-4">
               <div className="flex size-12 items-center justify-center rounded-2xl bg-amber-50 text-amber-600">
                 <span className="text-xl font-extrabold">฿</span>
               </div>
               <div>
-                <p className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">ค่าใช้จ่ายรวม</p>
+                <p className="text-[11px] font-bold text-slate-500 uppercase tracking-widest">ค่าใช้จ่ายรวม</p>
                 <p className="text-3xl font-extrabold text-slate-900 leading-none mt-1">
                   {totalCost.toLocaleString()} <span className="text-sm font-medium text-slate-500">บาท</span>
                 </p>
@@ -517,8 +535,8 @@ export default function MaintenancePage() {
           </Card>
         </div>
 
-        <Card className="border-none shadow-sm rounded-[2rem] bg-white overflow-hidden">
-          <CardHeader className="bg-white border-b py-5 px-6">
+        <Card className="border-none shadow-sm rounded-[2rem] bg-white/95 backdrop-blur-sm overflow-hidden">
+          <CardHeader className="bg-white/80 border-b py-5 px-6">
             <div className="relative max-w-md">
               <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input
@@ -532,8 +550,8 @@ export default function MaintenancePage() {
 
           <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50/50">
-                <TableRow className="border-b border-slate-100">
+              <TableHeader className="bg-slate-50/80">
+                <TableRow className="border-b border-slate-200/50">
                   <TableHead className="pl-6 font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">รถ</TableHead>
                   <TableHead className="font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">ประเภทซ่อม/ปัญหา</TableHead>
                   <TableHead className="hidden sm:table-cell font-bold uppercase text-[11px] text-slate-500 tracking-wider py-5">วันที่</TableHead>
@@ -547,7 +565,7 @@ export default function MaintenancePage() {
               <TableBody>
                 {loading ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-slate-400 py-16">
+                    <TableCell colSpan={7} className="text-center text-slate-500 py-16">
                       <Loader2 className="animate-spin mx-auto mb-3 text-blue-600 size-6" />
                       กำลังโหลดข้อมูล...
                     </TableCell>
@@ -564,7 +582,7 @@ export default function MaintenancePage() {
                     const isStillRepairing = currentVehicle?.status === "maintenance";
 
                     return (
-                      <TableRow key={record.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
+                      <TableRow key={record.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100/50">
                         <TableCell className="pl-6 font-bold text-slate-800 py-4">
                           {record.vehicle_plate || "-"}
                         </TableCell>
@@ -598,7 +616,7 @@ export default function MaintenancePage() {
                               variant="ghost" 
                               size="icon" 
                               title="แก้ไขรายการ / ใส่ค่าใช้จ่าย"
-                              className="size-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-50"
+                              className="size-8 rounded-lg text-slate-400 hover:text-blue-600 hover:bg-blue-100"
                               onClick={() => {
                                 setEditRecord(record);
                                 setDialogOpen(true);
@@ -618,7 +636,7 @@ export default function MaintenancePage() {
                                 คืนสถานะว่าง
                               </Button>
                             ) : (
-                              <Badge variant="outline" className="h-8 px-3 rounded-lg border-slate-200 bg-slate-50 text-slate-400 font-bold">
+                              <Badge variant="outline" className="h-8 px-3 rounded-lg border-slate-200 bg-slate-50 text-slate-400 font-bold shadow-sm">
                                 คืนรถแล้ว
                               </Badge>
                             )}

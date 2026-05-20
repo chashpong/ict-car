@@ -7,8 +7,25 @@ const AuthContext = createContext(undefined)
 const SESSION_KEY = "vms_session"
 
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)
-  const [isLoading, setIsLoading] = useState(true)
+  // ✅ 1. ให้ React อ่าน Cache จาก LocalStorage ขึ้นมาใช้งานทันทีก่อนเลย (ถ้างั้นเว็บจะไม่ต้องรอโหลด)
+  const [user, setUser] = useState(() => {
+    if (typeof window !== "undefined") {
+      const cached = localStorage.getItem(SESSION_KEY)
+      if (cached) {
+        try { return JSON.parse(cached) } 
+        catch (e) { return null }
+      }
+    }
+    return null
+  })
+  
+  // ✅ 2. ถ้ามีข้อมูล Cache อยู่แล้ว ให้ถือว่าโหลดเสร็จแล้ว ข้ามหน้าจอ Loading ขาวๆ ไปได้เลย!
+  const [isLoading, setIsLoading] = useState(() => {
+    if (typeof window !== "undefined") {
+      return !localStorage.getItem(SESSION_KEY)
+    }
+    return true
+  })
   
   const fetching = useRef(false);
 
@@ -35,6 +52,7 @@ export function AuthProvider({ children }) {
           role: "user" 
         };
         setUser(guestData);
+        if (typeof window !== "undefined") localStorage.setItem(SESSION_KEY, JSON.stringify(guestData));
         return guestData;
       }
 
@@ -47,7 +65,7 @@ export function AuthProvider({ children }) {
       };
 
       setUser(userData);
-      localStorage.setItem(SESSION_KEY, JSON.stringify(userData));
+      if (typeof window !== "undefined") localStorage.setItem(SESSION_KEY, JSON.stringify(userData));
       return userData;
 
     } catch (err) {
@@ -69,7 +87,11 @@ export function AuthProvider({ children }) {
       if (session?.user && mounted) {
         await fetchProfile(session.user);
       } else {
-        setIsLoading(false);
+        if (mounted) {
+          setUser(null);
+          if (typeof window !== "undefined") localStorage.removeItem(SESSION_KEY);
+          setIsLoading(false);
+        }
       }
     };
 
@@ -79,9 +101,11 @@ export function AuthProvider({ children }) {
       if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session?.user && mounted) {
         await fetchProfile(session.user);
       } else if (event === 'SIGNED_OUT') {
-        setUser(null);
-        localStorage.removeItem(SESSION_KEY);
-        setIsLoading(false);
+        if (mounted) {
+          setUser(null);
+          if (typeof window !== "undefined") localStorage.removeItem(SESSION_KEY);
+          setIsLoading(false);
+        }
       }
     });
 
@@ -110,8 +134,10 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     await supabase.auth.signOut();
     setUser(null);
-    localStorage.removeItem(SESSION_KEY);
-    sessionStorage.removeItem(SESSION_KEY);
+    if (typeof window !== "undefined") {
+      localStorage.removeItem(SESSION_KEY);
+      sessionStorage.removeItem(SESSION_KEY);
+    }
   }, []);
 
   return (
@@ -135,15 +161,12 @@ export function useAuth() {
 
 /**
  * ✅ แก้ไขส่วนการเข้าถึงเมนู (Access Control)
- * เพิ่ม /logs ให้ admin สามารถเข้าถึงได้
  */
 const ROLE_MENU_ACCESS = {
-  // admin เข้าถึงได้ทุกหน้า
-  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs"],
+  // ✅ เพิ่ม /audit-logs เข้าไปเผื่อไว้ด้วย ป้องกันการเข้าถึงไม่ได้
+  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs", "/audit-logs"],
   
-  // ✅ เอา "/" ออกจาก approver เพื่อไม่ให้ระบบอนุญาตให้เข้าหน้าหลัก
   approver: ["/bookings", "/approvals", "/history", "/reports"],
-  
   driver: ["/logbook"],
   user: ["/bookings"],
 }

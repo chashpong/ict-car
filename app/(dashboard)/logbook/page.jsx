@@ -2,11 +2,12 @@
 
 import { useAuth } from "@/lib/auth-context"
 import { useState, useEffect } from "react"
+import Image from "next/image" // ✅ 1. นำเข้า Next Image
 import { 
   Search, FileImage, MapPin, Camera, Play, 
   Square, CheckCircle2, AlertCircle, Loader2,
   Calendar as CalendarIcon, Clock, Fuel, Save, ChevronRight, Navigation,
-  Car, UserCheck 
+  Car, UserCheck, RefreshCw 
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -23,6 +24,7 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import { cn } from "@/lib/utils" // ✅ นำเข้า cn เผื่อใช้กับปุ่มรีเฟรช
 
 import { supabase } from "@/lib/supabase"
 import Swal from "sweetalert2" 
@@ -81,31 +83,50 @@ function FileUploadButton({ label, onUpload, url, icon = <Camera className="size
   )
 }
 
-function DriverTodayJobs({ bookings, startTrip }) {
+function DriverTodayJobs({ bookings, startTrip, isLoading, onRefresh }) {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="px-2 pt-2">
-        <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
-          <CalendarIcon className="size-6 text-blue-400" /> งานวันนี้ของคุณ
-        </h2>
-        <p className="text-sm text-white/80 mt-1">รายการเดินทางที่ได้รับการอนุมัติและรอการดำเนินการ</p>
+      <div className="px-2 pt-2 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-extrabold text-white flex items-center gap-2 drop-shadow-md">
+            <CalendarIcon className="size-6 text-blue-400" /> งานวันนี้ของคุณ
+          </h2>
+          <p className="text-sm text-white/90 mt-1 drop-shadow-sm">รายการเดินทางที่ได้รับการอนุมัติและรอการดำเนินการ</p>
+        </div>
+        
+        {/* ✅ ปุ่มรีเฟรชเฉพาะส่วน */}
+        <Button 
+          variant="outline" 
+          size="icon" 
+          onClick={onRefresh} 
+          disabled={isLoading}
+          className="h-10 w-10 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+          title="รีเฟรชงานใหม่"
+        >
+          <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+        </Button>
       </div>
 
-      {bookings.length === 0 ? (
-        <Card className="border-dashed border-2 border-white/20 bg-black/20 backdrop-blur-sm shadow-none rounded-[2rem]">
+      {isLoading ? (
+        <Card className="border-none bg-white/90 backdrop-blur-sm shadow-sm rounded-[2rem] h-64 flex flex-col items-center justify-center text-slate-500">
+           <Loader2 className="size-8 animate-spin text-blue-500 mb-3" />
+           <p className="font-bold text-sm">กำลังตรวจสอบงานของคุณ...</p>
+        </Card>
+      ) : bookings.length === 0 ? (
+        <Card className="border-dashed border-2 border-white/20 bg-black/30 backdrop-blur-md shadow-none rounded-[2rem]">
           <CardContent className="flex flex-col items-center justify-center py-20 text-center">
             <div className="bg-white/10 rounded-full p-6 mb-4">
-              <CheckCircle2 className="size-10 text-white/50" />
+              <CheckCircle2 className="size-10 text-white/60" />
             </div>
             <p className="text-white font-bold text-lg">ไม่มีงานค้างในวันนี้</p>
-            <p className="text-white/60 text-sm mt-1">คุณสามารถพักผ่อนได้เลย หรือรอรับงานใหม่</p>
+            <p className="text-white/70 text-sm mt-1">คุณสามารถพักผ่อนได้เลย หรือรอรับงานใหม่</p>
           </CardContent>
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2">
           {bookings.map((booking) => (
-            <Card key={booking.id} className="overflow-hidden border-none shadow-sm hover:shadow-xl transition-all duration-300 rounded-[1.5rem] bg-white group">
-              <CardHeader className="pb-4 bg-slate-50/80 border-b border-slate-100 px-6 pt-6">
+            <Card key={booking.id} className="overflow-hidden border-none shadow-sm hover:shadow-xl transition-all duration-300 rounded-[1.5rem] bg-white/95 backdrop-blur-sm group">
+              <CardHeader className="pb-4 bg-slate-50/80 border-b border-slate-200/60 px-6 pt-6">
                 <div className="flex items-start justify-between gap-4">
                   <div className="space-y-1">
                     <CardTitle className="text-lg font-bold text-slate-800 leading-tight">{booking.user_name}</CardTitle>
@@ -163,7 +184,7 @@ function DriverTodayJobs({ bookings, startTrip }) {
   )
 }
 
-function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user และ profile เข้ามาด้วยเพื่อทำ Log
+function TripRecordForm({ booking, user, userProfile }) { 
   const [isStarted, setIsStarted] = useState(false)
   const [days, setDays] = useState([])
   const [loading, setLoading] = useState(false)
@@ -253,7 +274,6 @@ function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user 
       receipt_image: d.receipt_image
     }
 
-    // 📝 ดึงข้อมูลเดิมมาเทียบ
     const { data: oldLog } = await supabase.from("logbooks").select("*").eq('booking_id', booking.id).eq('log_date', d.date).single()
 
     const { data: newLog, error } = await supabase.from("logbooks").upsert(payload, { 
@@ -266,7 +286,6 @@ function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user 
       return
     }
 
-    // 📝 บันทึก Log การอัปเดตข้อมูลรายวัน
     if (user && newLog) {
        await supabase.from('audit_logs').insert([{
          user_id: user.id,
@@ -381,7 +400,6 @@ function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user 
     await supabase.from("drivers").update({ status: "available" }).eq("id", booking.driver_id)
     await supabase.from("bookings").update({ status: "completed" }).eq("id", booking.id)
 
-    // 📝 บันทึก Log เมื่อจบทริป
     if (user) {
        await supabase.from('audit_logs').insert([{
          user_id: user.id,
@@ -479,7 +497,7 @@ function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user 
                       <Input
                         type="number"
                         placeholder="ระบุตัวเลขไมล์รถ..."
-                        className="h-14 text-xl font-bold font-mono bg-white border-slate-200 rounded-xl px-4 focus-visible:ring-blue-500 shadow-sm"
+                        className="h-14 text-xl font-bold font-mono bg-white border-slate-200 rounded-xl px-4 focus-visible:ring-blue-500 shadow-sm text-black"
                         value={d.start_mileage}
                         onChange={(e) => {
                           const newDays = [...days]
@@ -508,7 +526,7 @@ function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user 
                       <Input
                         type="number"
                         placeholder="ระบุตัวเลขไมล์รถ..."
-                        className="h-14 text-xl font-bold font-mono bg-white border-slate-200 rounded-xl px-4 focus-visible:ring-rose-500 shadow-sm"
+                        className="h-14 text-xl font-bold font-mono bg-white border-slate-200 rounded-xl px-4 focus-visible:ring-rose-500 shadow-sm text-black"
                         value={d.end_mileage}
                         onChange={(e) => {
                           const val = e.target.value
@@ -609,7 +627,6 @@ function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user 
                   </div>
                 </div>
 
-                {/* ✅ ปุ่มบันทึกข้อมูลแยกตามรายวัน */}
                 <div className="flex justify-end pt-2">
                   <Button 
                     className="font-bold rounded-xl h-12 px-6 bg-slate-900 hover:bg-slate-800 text-white shadow-md transition-all" 
@@ -626,7 +643,6 @@ function TripRecordForm({ booking, user, userProfile }) { // ✅ รับ user 
         ))}
       </div>
 
-      {/* Floating Submit Button (Mobile & Desktop) */}
       <div className="fixed bottom-0 left-0 right-0 p-4 bg-white/80 backdrop-blur-md border-t border-slate-200 z-50 md:relative md:bg-transparent md:border-none md:p-0 md:mt-8 md:backdrop-blur-none flex justify-end">
         <Button 
           className="w-full md:w-auto h-14 px-10 text-lg font-bold shadow-xl shadow-blue-600/20 rounded-2xl bg-blue-600 hover:bg-blue-700 text-white transition-all hover:scale-[1.02]"
@@ -652,66 +668,70 @@ export default function LogbookPage() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   
   const { user } = useAuth()
-  const [userProfile, setUserProfile] = useState(null) // ✅ เก็บ profile
+  const [userProfile, setUserProfile] = useState(null)
+  
+  // ✅ 2. เพิ่ม State จัดการ Loading
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
     if (user) {
-      fetchBookings()
-      fetchUserProfile()
+      loadAllData() // ✅ 3. เรียกใช้ฟังก์ชันดึงรวดเดียวตอนเข้าหน้าเว็บ
     }
   }, [user])
 
-  async function fetchUserProfile() {
-    const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-    if (data) setUserProfile(data)
-  }
+  // ✅ 4. รวบรวมการดึง Profile และ Bookings ให้อยู่ในฟังก์ชันเดียวกัน
+  async function loadAllData() {
+    setIsLoading(true);
+    try {
+      // 4.1 ดึง Profile ของคนที่ล็อกอินอยู่ก่อน
+      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+      if (profile) setUserProfile(profile);
 
-  async function fetchBookings() {
-    let myDriverId = null;
-
-    if (user.role === "driver") {
-      const { data: driverData } = await supabase
-        .from("drivers")
-        .select("id")
-        .eq("user_id", user.id)
-        .single()
-      
-      if (driverData) {
-        myDriverId = driverData.id;
-      } else {
-        setBookings([]);
-        return; 
+      // 4.2 ตรวจสอบว่าเป็นคนขับหรือไม่
+      let myDriverId = null;
+      if (user.role === "driver") {
+        const { data: driverData } = await supabase.from("drivers").select("id").eq("user_id", user.id).single();
+        if (driverData) {
+          myDriverId = driverData.id;
+        } else {
+          setBookings([]);
+          return; 
+        }
       }
-    }
 
-    let query = supabase
-      .from("bookings")
-      .select(`
-        id, user_name, department, destination, status,
-        start_date, end_date, start_time, end_time,
-        vehicle_id, driver_id,
-        vehicles:vehicle_id ( license_plate, last_mileage ),
-        drivers:driver_id ( name )
-      `)
-      .in("status", ["approved", "started"])
-      .order("start_date", { ascending: true })
+      // 4.3 ดึงคิวจองรถที่ได้รับการอนุมัติแล้ว
+      let query = supabase
+        .from("bookings")
+        .select(`
+          id, user_name, department, destination, status,
+          start_date, end_date, start_time, end_time,
+          vehicle_id, driver_id,
+          vehicles:vehicle_id ( license_plate, last_mileage ),
+          drivers:driver_id ( name )
+        `)
+        .in("status", ["approved", "started"])
+        .order("start_date", { ascending: true })
 
-    if (user.role === "driver" && myDriverId) {
-      query = query.eq("driver_id", myDriverId);
-    }
+      if (user.role === "driver" && myDriverId) {
+        query = query.eq("driver_id", myDriverId);
+      }
 
-    const { data, error } = await query;
-    
-    if (error) {
+      const { data, error } = await query;
+      
+      if (error) throw error;
+
+      setBookings(data || []);
+
+    } catch (error) {
       console.error("Fetch Error:", error.message);
       Swal.fire({
         icon: 'error',
         title: 'ไม่สามารถดึงข้อมูลได้',
         text: `รายละเอียด: ${error.message}`,
       });
+    } finally {
+      setIsLoading(false);
     }
-
-    setBookings(data || [])
   }
 
   function startTrip(booking) {
@@ -723,8 +743,17 @@ export default function LogbookPage() {
   }
 
   return (
-    <div className="min-h-screen bg-cover bg-center bg-no-repeat relative font-sarabun text-black" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 5. ลบ backgroundImage ออก เปลี่ยนไปใช้ `<Image />`
+    <div className="min-h-screen relative font-sarabun text-black bg-slate-900">
       
+      {/* โหลดรูปพื้นหลังแบบ Priority และบีบอัด */}
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
       <div className="relative z-10 border-b border-white/10">
@@ -733,10 +762,10 @@ export default function LogbookPage() {
 
       <div className="flex flex-1 flex-col gap-8 p-4 md:p-8 max-w-5xl mx-auto w-full relative z-10">
         <div className="flex flex-col gap-2">
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">
+          <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">
             Logbook / สมุดลงเวลา
           </h1>
-          <p className="text-white/80 font-medium">
+          <p className="text-white/90 font-medium drop-shadow-sm">
             บันทึกเลขไมล์รถยนต์รายวัน, อัปโหลดภาพหน้าปัด และรายงานการเติมน้ำมัน
           </p>
         </div>
@@ -761,20 +790,26 @@ export default function LogbookPage() {
           </div>
 
           <TabsContent value="today" className="mt-0 outline-none">
-            <DriverTodayJobs bookings={bookings} startTrip={startTrip} />
+            {/* ✅ 6. ส่งสถานะ Loading และฟังก์ชัน Load ข้อมูลให้ Component ย่อยเพื่อทำปุ่มรีเฟรช */}
+            <DriverTodayJobs 
+              bookings={bookings} 
+              startTrip={startTrip} 
+              isLoading={isLoading} 
+              onRefresh={loadAllData} 
+            />
           </TabsContent>
 
           <TabsContent value="record" className="mt-0 outline-none">
             {selectedBooking ? (
               <TripRecordForm booking={selectedBooking} user={user} userProfile={userProfile} />
             ) : (
-              <Card className="border-dashed border-2 border-white/20 bg-black/20 backdrop-blur-sm shadow-none rounded-[2rem] mt-4">
+              <Card className="border-dashed border-2 border-white/20 bg-black/30 backdrop-blur-md shadow-none rounded-[2rem] mt-4">
                 <CardContent className="flex flex-col items-center justify-center py-20 text-center">
                   <div className="bg-white/10 rounded-full p-6 mb-4">
-                    <FileImage className="size-10 text-white/50" />
+                    <FileImage className="size-10 text-white/60" />
                   </div>
                   <p className="text-white font-bold text-lg">กรุณาเลือกงานจากแถบ "งานที่ได้รับมอบหมาย" ก่อน</p>
-                  <p className="text-white/60 text-sm mt-1">เพื่อเริ่มบันทึกข้อมูลการเดินทางของคุณ</p>
+                  <p className="text-white/70 text-sm mt-1">เพื่อเริ่มบันทึกข้อมูลการเดินทางของคุณ</p>
                 </CardContent>
               </Card>
             )}

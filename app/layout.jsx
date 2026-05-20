@@ -1,11 +1,16 @@
-import { Geist, Geist_Mono } from 'next/font/google'
+import { Sarabun } from 'next/font/google' // ✅ 1. นำเข้าฟอนต์ Sarabun ของไทยจาก Next.js โดยตรง
 import { Analytics } from '@vercel/analytics/next'
 import { AuthProvider } from '@/lib/auth-context'
-import { SessionTimeout } from '@/components/session-timeout' // ✅ 1. เพิ่มการนำเข้าระบบตรวจจับเวลา
+import { SessionTimeout } from '@/components/session-timeout'
 import './globals.css'
 
-const _geist = Geist({ subsets: ["latin"] });
-const _geistMono = Geist_Mono({ subsets: ["latin"] });
+// ✅ 2. ตั้งค่าฟอนต์ Sarabun เพื่อให้โหลดล่วงหน้า (Preload) แบบติดจรวด
+const sarabun = Sarabun({ 
+  weight: ['300', '400', '500', '600', '700', '800'], // โหลดน้ำหนักตัวอักษรที่ต้องใช้
+  subsets: ['thai', 'latin'], 
+  display: 'swap',
+  variable: '--font-sarabun', // สร้างตัวแปรให้ Tailwind ไปเรียกใช้ได้ง่ายๆ
+});
 
 export const metadata = {
   title: 'ระบบบริหารจัดการยานพาหนะราชการ',
@@ -32,10 +37,10 @@ export const metadata = {
 
 export default function RootLayout({ children }) {
   return (
-    <html lang="th">
-      <body className="font-sans antialiased">
+    // ✅ 3. นำตัวแปรฟอนต์สารบรรณมาครอบไว้ที่ tag <html> และลบ Geist ที่ไม่ได้ใช้ออก
+    <html lang="th" className={`${sarabun.variable}`}>
+      <body className="font-sans font-sarabun antialiased bg-slate-50 text-slate-900">
         <AuthProvider>
-          {/* ✅ 2. วาง SessionTimeout ไว้ภายใน AuthProvider เพื่อให้ระบบเริ่มเฝ้าระวังการใช้งาน */}
           <SessionTimeout /> 
           
           {children}

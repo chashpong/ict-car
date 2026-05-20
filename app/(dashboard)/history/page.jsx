@@ -1,9 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
+import Image from "next/image" // ✅ 1. นำเข้า Next Image
 import { useAuth } from "@/lib/auth-context" 
+import { cn } from "@/lib/utils" // ✅ นำเข้า cn
 import { 
-  FileText, Printer, Info, Clock, CheckCircle2, Search, X
+  FileText, Printer, Info, Clock, CheckCircle2, Search, X, RefreshCw // ✅ นำเข้า RefreshCw
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -52,7 +54,7 @@ function HistoryDialogContent({ booking, userProfile, onClose }) {
               <Printer className="size-4 mr-2" /> พิมพ์เอกสาร
             </Button>
           ) : (
-            <Badge variant="outline" className="flex-1 sm:flex-none justify-center text-amber-600 border-amber-200 bg-amber-50 px-4 h-12 text-sm">
+            <Badge variant="outline" className="flex-1 sm:flex-none justify-center text-amber-600 border-amber-200 bg-amber-50 px-4 h-12 text-sm font-bold">
               รอเลขไมล์จากคนขับ
             </Badge>
           )}
@@ -64,7 +66,7 @@ function HistoryDialogContent({ booking, userProfile, onClose }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto flex justify-center pb-10">
+      <div className="flex-1 min-h-0 overflow-y-auto flex justify-center pb-10 custom-scrollbar">
         <div ref={documentRef} className="print-container shadow-xl rounded-xl overflow-hidden border border-slate-200 bg-white h-max">
           <Form3Document 
             booking={booking} 
@@ -90,33 +92,39 @@ export default function HistoryPage() {
   const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    fetchHistory()
-  }, [])
-
-  useEffect(() => {
-    async function fetchUserProfile() {
-      if (!user?.id) return;
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) setUserProfile(data)
-    }
-    fetchUserProfile()
+    if (user) loadAllData();
   }, [user])
 
-  async function fetchHistory() {
+  // ✅ 2. รวมการดึงข้อมูล Profile, Bookings, Vehicles, Drivers ไว้ใน Promise.all ชุดเดียว
+  async function loadAllData() {
     setIsLoading(true)
     try {
-      const { data: bData, error: bError } = await supabase
-        .from("bookings")
-        .select("*")
-        .in("status", ["approved", "completed", "started"])
-        .order("created_at", { ascending: false });
+      const promises = [
+        supabase.from("bookings").select("*").in("status", ["approved", "completed", "started"]).order("created_at", { ascending: false }),
+        supabase.from("vehicles").select("id, license_plate, last_mileage"),
+        supabase.from("drivers").select("id, name")
+      ];
 
-      if (bError) throw bError;
+      // ดึง Profile ด้วยถ้ายังไม่มี
+      if (user?.id && !userProfile) {
+        promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
+      }
 
-      const { data: vData } = await supabase.from("vehicles").select("id, license_plate, last_mileage");
-      const { data: dData } = await supabase.from("drivers").select("id, name");
+      const results = await Promise.all(promises);
+      
+      const bRes = results[0];
+      const vRes = results[1];
+      const dRes = results[2];
+      const profileRes = promises.length > 3 ? results[3] : null;
 
-      const bookingIds = (bData || []).map(b => b.id);
+      if (profileRes?.data) setUserProfile(profileRes.data);
+
+      const bData = bRes.data || [];
+      const vData = vRes.data || [];
+      const dData = dRes.data || [];
+
+      // ✅ ดึงข้อมูล Logbooks ตาม ID ที่มี
+      const bookingIds = bData.map(b => b.id);
       let lData = [];
       if (bookingIds.length > 0) {
         const { data: logs } = await supabase
@@ -127,9 +135,9 @@ export default function HistoryPage() {
         lData = logs || [];
       }
 
-      const enrichedData = (bData || []).map(booking => {
-        const vehicle = vData?.find(v => v.id === booking.vehicle_id);
-        const driver = dData?.find(d => d.id === booking.driver_id);
+      const enrichedData = bData.map(booking => {
+        const vehicle = vData.find(v => v.id === booking.vehicle_id);
+        const driver = dData.find(d => d.id === booking.driver_id);
         
         const bookingLogs = lData.filter(l => l.booking_id === booking.id);
         
@@ -162,13 +170,18 @@ export default function HistoryPage() {
   }
 
   return (
-    // ✅ 1. ตั้งค่ารูปภาพพื้นหลังและ Overlay
-    <div className="font-sarabun text-black min-h-screen bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 3. ปรับพื้นหลังให้ใช้ Next Image เพื่อลบอาการเรนเดอร์ค้าง
+    <div className="font-sarabun text-black min-h-screen relative bg-slate-900">
       
-      {/* 👇 เพิ่ม Overlay สีดำกึ่งโปร่งใสเหนือรูปภาพ */}
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      {/* ✅ 2. ยก PageHeader ให้อยู่เหนือ Overlay */}
       <div className="relative z-10 border-b border-white/10">
         <PageHeader title="ประวัติการอนุมัติ" />
       </div>
@@ -176,18 +189,30 @@ export default function HistoryPage() {
       <div className="flex flex-1 flex-col gap-6 p-4 md:p-8 relative z-10">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-2">
           <div className="space-y-1">
-            {/* ✅ 3. ลบคำว่า italic ออก และเปลี่ยนสีข้อความเป็นสีขาว */}
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">
-              สมุดบันทึกและประวัติการใช้รถ
-            </h1>
-            <p className="text-sm text-white/80 font-medium mt-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">
+                สมุดบันทึกและประวัติการใช้รถ
+              </h1>
+              {/* ✅ เพิ่มปุ่มรีเฟรชข้อมูล */}
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={loadAllData} 
+                disabled={isLoading}
+                className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+                title="รีเฟรชข้อมูล"
+              >
+                <RefreshCw className={cn("size-4", isLoading && "animate-spin")} />
+              </Button>
+            </div>
+            <p className="text-sm text-white/90 font-medium mt-1 drop-shadow-sm">
               รายการที่อนุมัติแล้วและเสร็จสิ้นทั้งหมด ({historyBookings.length} รายการ)
             </p>
           </div>
         </div>
 
-        <div className="bg-white rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
-          <div className="p-4 border-b border-slate-100 flex items-center gap-4 bg-slate-50/30">
+        <div className="bg-white/95 backdrop-blur-sm rounded-[2rem] shadow-sm border border-slate-200 overflow-hidden flex flex-col min-h-[500px]">
+          <div className="p-4 border-b border-slate-200/60 flex items-center gap-4 bg-slate-50/50">
             <div className="relative max-w-sm w-full">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
               <input 
@@ -202,7 +227,7 @@ export default function HistoryPage() {
           {isLoading ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-400 py-20">
               <div className="size-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
-              <p>กำลังโหลดข้อมูล...</p>
+              <p className="font-bold">กำลังโหลดข้อมูลประวัติ...</p>
             </div>
           ) : historyBookings.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-400 py-20">
@@ -224,12 +249,12 @@ export default function HistoryPage() {
                     <th className="p-4 font-bold text-center rounded-tr-3xl">จัดการ</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100/50">
                   {historyBookings.map((booking) => (
-                    <tr key={booking.id} className="hover:bg-slate-50/50 transition-colors group">
+                    <tr key={booking.id} className="hover:bg-slate-50/80 transition-colors group">
                       <td className="p-4">
                         <p className="font-bold text-slate-900 text-[15px]">{booking.user_name}</p>
-                        <p className="text-[13px] text-slate-500 mt-0.5">{booking.department || 'ไม่ระบุหน่วยงาน'}</p>
+                        <p className="text-[13px] text-slate-500 mt-0.5 font-medium">{booking.department || 'ไม่ระบุหน่วยงาน'}</p>
                       </td>
                       <td className="p-4 max-w-[200px] truncate">
                         <p className="font-bold text-slate-700 text-[14px] truncate">{booking.destination}</p>
@@ -241,15 +266,15 @@ export default function HistoryPage() {
                       </td>
                       <td className="p-4">
                         <p className="text-[14px] font-bold text-blue-600">{booking.display_license_plate}</p>
-                        <p className="text-[12px] text-slate-500 mt-0.5">{booking.display_driver_name}</p>
+                        <p className="text-[12px] text-slate-500 mt-0.5 font-medium">{booking.display_driver_name}</p>
                       </td>
                       <td className="p-4 text-center">
                         {booking.status === "completed" ? (
-                          <Badge className="bg-emerald-50 text-emerald-600 border-emerald-100 font-bold px-3 py-1">
+                          <Badge variant="outline" className="bg-emerald-50 text-emerald-600 border-emerald-200 shadow-sm font-bold px-3 py-1">
                             เสร็จสิ้น
                           </Badge>
                         ) : (
-                          <Badge className="bg-blue-50 text-blue-600 border-blue-100 font-bold px-3 py-1">
+                          <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-200 shadow-sm font-bold px-3 py-1">
                             กำลังดำเนินการ
                           </Badge>
                         )}
@@ -258,7 +283,7 @@ export default function HistoryPage() {
                         <Button
                           onClick={() => setSelectedBooking(booking)}
                           variant="ghost"
-                          className="text-slate-600 hover:text-blue-600 hover:bg-blue-50 rounded-xl font-bold transition-all"
+                          className="text-slate-500 hover:text-blue-600 hover:bg-blue-100 rounded-xl font-bold transition-all"
                         >
                           <FileText className="size-4 mr-2" />
                           ดูเอกสาร

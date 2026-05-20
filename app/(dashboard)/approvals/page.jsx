@@ -1,13 +1,15 @@
 "use client"
 
 import { useState, useEffect, useRef, useMemo } from "react"
+import Image from "next/image" 
 import { useAuth } from "@/lib/auth-context"
+import { cn } from "@/lib/utils" // ✅ 1. เพิ่มคำสั่งนี้นำเข้า cn เรียบร้อยแล้วครับ!
 import {
   Check, X, ChevronRight, MapPin, Calendar, Users,
   Building2, Clock, Briefcase, UserCircle, Phone,
   Car, Info, MapPinned, UserPlus,
   PenTool, Eraser, Image as ImageIcon, Save, CheckCircle2,
-  Printer, Trash2, Upload, RefreshCw 
+  Printer, Trash2, Upload, RefreshCw, Loader2
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -551,15 +553,17 @@ export default function ApprovalsPage() {
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [availableDrivers, setAvailableDrivers] = useState([])
   const [selectedDriverId, setSelectedDriverId] = useState("")
+  
+  // ✅ 2. เพิ่ม State จัดการ Loading
+  const [isLoading, setIsLoading] = useState(true)
 
   useEffect(() => {
-    fetchData()
-    fetchDrivers()
+    loadAllData() // ✅ 3. เรียกฟังก์ชันดึงข้อมูลแบบใหม่
 
     const channel = supabase
       .channel('public:bookings')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
-        fetchData() 
+        loadAllData() 
       })
       .subscribe()
 
@@ -577,23 +581,30 @@ export default function ApprovalsPage() {
     fetchUserProfile()
   }, [user])
 
-  async function fetchData() {
-    const { data: bData } = await supabase
-      .from("bookings")
-      .select("*, vehicles(license_plate, brand, model, last_mileage)") 
-      .eq("status", "pending")
-      .order("created_at", { ascending: true })
+  // ✅ 4. รวบรวมการดึงข้อมูล 2 เส้น ให้วิ่งพร้อมกันเพื่อความเร็ว
+  async function loadAllData() {
+    setIsLoading(true);
+    try {
+      // ใช้ Promise.all ให้ดึงคิวจอง และ ดึงคนขับ ไปพร้อมๆ กันเลย
+      const [bRes, dRes] = await Promise.all([
+        supabase
+          .from("bookings")
+          .select("*, vehicles(license_plate, brand, model, last_mileage)") 
+          .eq("status", "pending")
+          .order("created_at", { ascending: true }),
+        supabase
+          .from("drivers")
+          .select("*")
+          .in("status", ["ว่าง", "available"])
+      ]);
 
-    setBookings(bData || [])
-  }
-
-  async function fetchDrivers() {
-    const { data } = await supabase
-      .from("drivers")
-      .select("*")
-      .in("status", ["ว่าง", "available"])
-
-    setAvailableDrivers(data || [])
+      setBookings(bRes.data || []);
+      setAvailableDrivers(dRes.data || []);
+    } catch (error) {
+      console.error("Error loading data:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }
 
   async function handleUpdateSignatures(updatedSignatures) {
@@ -630,7 +641,6 @@ export default function ApprovalsPage() {
 
       if (bookingError) throw bookingError;
 
-      // ✅ เพิ่มการบันทึก Log สำหรับการอนุมัติ (APPROVE)
       if (user) {
         await supabase.from('audit_logs').insert([{
           user_id: user.id,
@@ -648,8 +658,7 @@ export default function ApprovalsPage() {
 
       Swal.fire({ icon: 'success', title: 'อนุมัติสำเร็จ!', text: 'พิจารณาอนุมัติและมอบหมายงานเรียบร้อย', confirmButtonColor: '#0f172a' });
 
-      fetchData();
-      fetchDrivers();
+      loadAllData(); // ดึงข้อมูลใหม่หลังอนุมัติเสร็จ
       setSelectedBooking(null);
       setSelectedDriverId("");
 
@@ -663,7 +672,6 @@ export default function ApprovalsPage() {
     const { error } = await supabase.from("bookings").update({ status: "rejected" }).eq("id", id)
     
     if (!error) {
-      // ✅ เพิ่มการบันทึก Log สำหรับการปฏิเสธ (REJECT)
       if (user) {
         await supabase.from('audit_logs').insert([{
           user_id: user.id,
@@ -677,7 +685,8 @@ export default function ApprovalsPage() {
       }
 
       Swal.fire({ icon: 'info', title: 'ดำเนินการแล้ว', text: 'ปฏิเสธคำขอจองเรียบร้อย', confirmButtonColor: '#0f172a' });
-      fetchData(); setSelectedBooking(null);
+      loadAllData(); 
+      setSelectedBooking(null);
     }
   }
 
@@ -689,8 +698,16 @@ export default function ApprovalsPage() {
   }
 
   return (
-    <div className="font-sarabun text-black min-h-screen bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 5. แก้ไขการโหลดพื้นหลังให้ใช้ Next Image เพื่อลบอาการหน้าจอค้าง
+    <div className="font-sarabun text-black min-h-screen relative bg-slate-900">
       
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
       <div className="relative z-10 border-b border-white/10">
@@ -702,17 +719,19 @@ export default function ApprovalsPage() {
           
           <div className="space-y-1">
             <div className="flex items-center gap-3">
-              <h1 className="text-3xl font-extrabold tracking-tight text-white">
+              <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">
                 พิจารณาคำขอใช้รถยนต์
               </h1>
+              {/* ✅ 6. อัปเดตปุ่มรีเฟรชให้หมุนติ้วตอนกำลังดึงข้อมูล */}
               <Button 
                 variant="outline" 
                 size="icon" 
-                onClick={fetchData} 
-                className="h-8 w-8 rounded-full border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50"
+                onClick={loadAllData} 
+                disabled={isLoading}
+                className="h-8 w-8 rounded-full border-slate-200 text-slate-500 hover:text-blue-600 hover:bg-blue-50 transition-all"
                 title="รีเฟรชข้อมูล"
               >
-                <RefreshCw className="size-4" />
+                <RefreshCw className={cn("size-4", isLoading && "animate-spin text-blue-600")} />
               </Button>
             </div>
             <p className="text-sm text-white/80 font-medium mt-1">
@@ -722,8 +741,13 @@ export default function ApprovalsPage() {
 
         </div>
 
-        {bookings.length === 0 ? (
-          <Card className="h-96 flex flex-col items-center justify-center border-none rounded-[2.5rem] bg-white shadow-sm text-black">
+        {isLoading ? (
+          <Card className="h-96 flex flex-col items-center justify-center border-none rounded-[2.5rem] bg-white/90 backdrop-blur-sm shadow-sm text-black">
+            <Loader2 className="size-10 animate-spin text-blue-500 mb-4" />
+            <p className="font-bold text-slate-500 text-lg">กำลังโหลดข้อมูลคำขอ...</p>
+          </Card>
+        ) : bookings.length === 0 ? (
+          <Card className="h-96 flex flex-col items-center justify-center border-none rounded-[2.5rem] bg-white/95 backdrop-blur-sm shadow-sm text-black">
             <div className="p-6 rounded-full bg-slate-50 mb-4 text-slate-200">
               <Clock className="size-16" />
             </div>

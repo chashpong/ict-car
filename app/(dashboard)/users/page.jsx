@@ -1,11 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useAuth } from "@/lib/auth-context" // ✅ 1. นำเข้า useAuth เพื่อดึงข้อมูลแอดมินที่กำลังใช้งาน
+import Image from "next/image" // ✅ 1. นำเข้า Next Image
+import { useAuth } from "@/lib/auth-context" 
+import { cn } from "@/lib/utils" // ✅ นำเข้า cn 
 import { 
   Users, ShieldCheck, UserCog, Search, 
   Pencil, Loader2, Mail, Building2, UserCheck, 
-  Info, Filter, CheckCircle2, UserCircle, Briefcase
+  Info, Filter, CheckCircle2, UserCircle, Briefcase, RefreshCw // ✅ เพิ่ม RefreshCw
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header" 
 import { Button } from "@/components/ui/button"
@@ -40,7 +42,7 @@ import { getRoleLabel, getRoleBadgeColor } from "@/lib/auth-context"
 import Swal from 'sweetalert2'
 
 export default function UsersManagementPage() {
-  const { user } = useAuth() // ✅ ดึง User ปัจจุบันที่ล็อกอินอยู่
+  const { user } = useAuth() 
   const [currentUserProfile, setCurrentUserProfile] = useState(null)
   
   const [users, setUsers] = useState([])
@@ -49,36 +51,37 @@ export default function UsersManagementPage() {
   const [editUser, setEditUser] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  // ✅ ดึงโปรไฟล์ของ Admin ที่กำลังใช้งานอยู่ (เพื่อเอาชื่อไปบันทึกลง Log)
-  useEffect(() => {
-    async function fetchCurrentUserProfile() {
-      if (!user?.id) return;
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) setCurrentUserProfile(data)
-    }
-    fetchCurrentUserProfile()
+  useEffect(() => { 
+    if(user) loadAllData() 
   }, [user])
 
-  useEffect(() => { 
-    fetchUsers() 
-  }, [])
+  // ✅ 2. รวบรวมการดึงข้อมูล 2 อย่างให้อยู่ในฟังก์ชันเดียวกัน (Promise.all)
+  async function loadAllData() {
+    setLoading(true);
+    try {
+      const promises = [
+        supabase.from("profiles").select("*").order('full_name', { ascending: true })
+      ];
+      
+      if (user?.id && !currentUserProfile) {
+        promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
+      }
 
-  async function fetchUsers() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from("profiles")
-      .select("*")
-      .order('full_name', { ascending: true })
-    
-    if (!error) setUsers(data || [])
-    setLoading(false)
+      const results = await Promise.all(promises);
+      
+      if (results[0].data) setUsers(results[0].data);
+      if (results[1]?.data) setCurrentUserProfile(results[1].data);
+
+    } catch (error) {
+      console.error("Error loading users:", error);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  // ✅ ฟังก์ชันอัปเดตข้อมูลแบบ Full Form พร้อมบันทึก Log
   async function handleUpdateProfile(formData) {
     setIsSaving(true)
 
-    // 📝 ดึงข้อมูลเดิมมาเก็บไว้เปรียบเทียบใน Log
     const oldData = users.find(u => u.id === formData.id)
 
     const { error } = await supabase
@@ -91,7 +94,6 @@ export default function UsersManagementPage() {
       .eq("id", formData.id)
 
     if (!error) {
-      // 📝 สั่งบันทึก Log กิจกรรมการแก้ไขข้อมูล
       if (user) {
         await supabase.from('audit_logs').insert([{
           user_id: user.id,
@@ -112,7 +114,7 @@ export default function UsersManagementPage() {
         }]);
       }
 
-      fetchUsers() 
+      loadAllData() // ดึงข้อมูลใหม่หลังแก้เสร็จ
       setEditUser(null)
       Swal.fire({ 
         icon: 'success', 
@@ -140,9 +142,16 @@ export default function UsersManagementPage() {
   }
 
   return (
-    // ✅ เพิ่มพื้นหลังรูปภาพให้เข้ากับธีมใหม่
-    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 3. ปรับพื้นหลังไปใช้ Next Image
+    <div className="min-h-screen font-sarabun text-black relative bg-slate-900">
       
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
       <div className="relative z-10 border-b border-white/10">
@@ -151,7 +160,6 @@ export default function UsersManagementPage() {
 
       <div className="p-4 md:p-8 space-y-8 relative z-10">
         
-        {/* 1. Summary Cards ล้อตามหน้า Dashboard */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
           <StatCard title="สมาชิกทั้งหมด" value={stats.total} icon={<Users className="size-6 text-blue-600" />} color="blue" />
           <StatCard title="ผู้ดูแลระบบ" value={stats.admins} icon={<ShieldCheck className="size-6 text-red-600" />} color="red" />
@@ -159,14 +167,28 @@ export default function UsersManagementPage() {
           <StatCard title="พนักงานขับรถ" value={stats.drivers} icon={<UserCheck className="size-6 text-emerald-600" />} color="emerald" />
         </div>
 
-        <div className="flex flex-col gap-2">
-          {/* ✅ ปรับตัวหนังสือให้เป็นสีขาวให้เข้ากับพื้นหลัง */}
-          <h1 className="text-3xl font-extrabold tracking-tight text-white">จัดการสมาชิกและสิทธิ์</h1>
-          <p className="text-white/80 text-sm mt-1 font-medium">ตรวจสอบรายชื่อและกำหนดบทบาทหน้าที่ของบุคลากรในระบบ</p>
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">จัดการสมาชิกและสิทธิ์</h1>
+              {/* ✅ เพิ่มปุ่มรีเฟรชข้อมูล */}
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={loadAllData} 
+                disabled={loading}
+                className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+                title="รีเฟรชข้อมูลสมาชิก"
+              >
+                <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+              </Button>
+            </div>
+            <p className="text-white/90 text-sm mt-1 font-medium drop-shadow-sm">ตรวจสอบรายชื่อและกำหนดบทบาทหน้าที่ของบุคลากรในระบบ</p>
+          </div>
         </div>
 
-        <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
-          <CardHeader className="bg-white border-b py-5 px-6">
+        <Card className="border-none shadow-sm overflow-hidden bg-white/95 backdrop-blur-sm rounded-[2rem]">
+          <CardHeader className="bg-white/80 border-b py-5 px-6">
             <div className="relative max-w-md">
               <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input
@@ -180,8 +202,8 @@ export default function UsersManagementPage() {
 
           <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50/50">
-                <TableRow className="border-b border-slate-100">
+              <TableHeader className="bg-slate-50/80">
+                <TableRow className="border-b border-slate-200/50">
                   <TableHead className="pl-8 py-5 font-bold text-slate-500 uppercase text-[11px] tracking-widest">ชื่อ-นามสกุล</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest py-5">อีเมล</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest py-5">แผนก/ฝ่าย</TableHead>
@@ -194,13 +216,13 @@ export default function UsersManagementPage() {
                 {loading ? (
                   <TableRow>
                     <TableCell colSpan={6} className="h-48 text-center">
-                      <Loader2 className="animate-spin mx-auto mb-2 text-blue-600" />
-                      <p className="text-slate-400">กำลังโหลดข้อมูลสมาชิก...</p>
+                      <Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />
+                      <p className="text-slate-500 font-bold mt-2">กำลังโหลดข้อมูลสมาชิก...</p>
                     </TableCell>
                   </TableRow>
                 ) : filtered.length > 0 ? (
                   filtered.map(user => (
-                    <TableRow key={user.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
+                    <TableRow key={user.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100/50">
                       <TableCell className="pl-8 py-4 font-bold text-slate-800">{user.full_name}</TableCell>
                       <TableCell className="text-slate-500 text-sm italic">{user.email}</TableCell>
                       <TableCell className="text-slate-600 font-medium">{user.department || "-"}</TableCell>
@@ -224,8 +246,8 @@ export default function UsersManagementPage() {
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl" 
-                          onClick={() => setEditUser({...user, status: user.status || 'active'})} // Default status = active
+                          className="text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-xl" 
+                          onClick={() => setEditUser({...user, status: user.status || 'active'})} 
                         >
                           <Pencil className="size-4" />
                         </Button>
@@ -238,7 +260,7 @@ export default function UsersManagementPage() {
                       <div className="p-4 rounded-full bg-slate-50 w-fit mx-auto mb-3">
                         <Info className="size-8 text-slate-300" />
                       </div>
-                      ไม่พบข้อมูลสมาชิกที่ค้นหา
+                      <p className="font-bold text-slate-500 text-base">ไม่พบข้อมูลสมาชิกที่ค้นหา</p>
                     </TableCell>
                   </TableRow>
                 )}
@@ -247,7 +269,6 @@ export default function UsersManagementPage() {
           </CardContent>
         </Card>
 
-        {/* Dialog แก้ไขสิทธิ์ แบบใหม่ (Full Form) */}
         <Dialog open={!!editUser} onOpenChange={(o) => { if(!o) setEditUser(null); }}>
           <DialogContent className="sm:max-w-xl rounded-[2.5rem] border-none bg-white text-black shadow-2xl p-0 overflow-hidden">
             <DialogHeader className="p-6 bg-[#0f172a] text-white">
@@ -261,7 +282,6 @@ export default function UsersManagementPage() {
             
             <div className="p-6 space-y-6 font-sarabun bg-slate-50/30">
               
-              {/* ข้อมูลบุคคลแบบ Read-only */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-emerald-600 mb-2">
                   <UserCircle className="size-5" />
@@ -281,7 +301,6 @@ export default function UsersManagementPage() {
 
               <div className="border-b border-dashed border-slate-200" />
 
-              {/* ข้อมูลที่แก้ไขได้ */}
               <div className="space-y-4">
                 <div className="flex items-center gap-2 text-emerald-600 mb-2">
                   <Briefcase className="size-5" />
@@ -294,7 +313,7 @@ export default function UsersManagementPage() {
                     value={editUser?.department || ""} 
                     onChange={(e) => setEditUser({...editUser, department: e.target.value})}
                     placeholder="เช่น กองคลัง, ช่าง, การเงิน" 
-                    className="rounded-xl h-11 border-slate-200 focus:ring-blue-500 bg-white" 
+                    className="rounded-xl h-11 border-slate-200 focus:ring-blue-500 bg-white text-black" 
                   />
                 </div>
 
@@ -305,7 +324,7 @@ export default function UsersManagementPage() {
                       value={editUser?.role} 
                       onValueChange={(v) => setEditUser({...editUser, role: v})}
                     >
-                      <SelectTrigger className="rounded-xl h-11 border-slate-200 bg-white">
+                      <SelectTrigger className="rounded-xl h-11 border-slate-200 bg-white text-black">
                         <SelectValue placeholder="เลือกสิทธิ์การใช้งาน" />
                       </SelectTrigger>
                       <SelectContent className="font-sarabun bg-white text-black border-slate-200">
@@ -323,7 +342,7 @@ export default function UsersManagementPage() {
                       value={editUser?.status || 'active'} 
                       onValueChange={(v) => setEditUser({...editUser, status: v})}
                     >
-                      <SelectTrigger className="rounded-xl h-11 border-slate-200 bg-white">
+                      <SelectTrigger className="rounded-xl h-11 border-slate-200 bg-white text-black">
                         <SelectValue placeholder="เลือกสถานะบัญชี" />
                       </SelectTrigger>
                       <SelectContent className="font-sarabun bg-white text-black border-slate-200">
@@ -376,7 +395,7 @@ function StatCard({ title, value, icon, color }) {
     emerald: { bg: "bg-emerald-50", border: "border-emerald-200" },
   }
   return (
-    <Card className={`border ${styles[color].border} shadow-sm bg-white rounded-[2rem] text-black hover:shadow-md transition-shadow`}>
+    <Card className={`border ${styles[color].border} shadow-sm bg-white/95 backdrop-blur-sm rounded-[2rem] text-black hover:shadow-md transition-shadow`}>
       <CardContent className="p-6 flex items-center gap-5">
         <div className={`p-4 rounded-[1rem] ${styles[color].bg}`}>
           {icon}

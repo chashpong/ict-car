@@ -1,10 +1,12 @@
 "use client"
 
 import { useEffect, useMemo, useState } from "react"
+import Image from "next/image" // ✅ 1. นำเข้า Next Image
+import { cn } from "@/lib/utils" // ✅ นำเข้า cn
 import { 
   FileText, FileSpreadsheet, Fuel, Route, 
   Car, Calendar, Search, Droplet, Milestone, 
-  Loader2, Info // ✅ เพิ่ม Loader2 และ Info เข้ามาตรงนี้ครับ
+  Loader2, Info, RefreshCw // ✅ นำเข้า RefreshCw
 } from "lucide-react"
 import {
   Bar,
@@ -108,18 +110,22 @@ export default function ReportsPage() {
     fetchData()
   }, [])
 
+  // ✅ 2. รวบรวมการดึงข้อมูล 2 อย่างให้อยู่ในรอบเดียวด้วย Promise.all
   async function fetchData() {
     setLoading(true)
+    try {
+      const [vRes, lRes] = await Promise.all([
+        supabase.from("vehicles").select("*"),
+        supabase.from("logbooks").select("*").order("log_date", { ascending: true })
+      ]);
 
-    const { data: v } = await supabase.from("vehicles").select("*")
-    const { data: l } = await supabase
-      .from("logbooks")
-      .select("*")
-      .order("log_date", { ascending: true })
-
-    setVehicles(v || [])
-    setLogEntries(l || [])
-    setLoading(false)
+      setVehicles(vRes.data || [])
+      setLogEntries(lRes.data || [])
+    } catch (error) {
+      console.error("Error loading reports data:", error)
+    } finally {
+      setLoading(false)
+    }
   }
 
   /* ===================== FILTER ===================== */
@@ -143,7 +149,7 @@ export default function ReportsPage() {
 
   const totalDistance = filteredLogs.reduce((s, l) => s + getDistance(l), 0)
   const totalFuelCost = filteredLogs.reduce((s, l) => s + getFuelCost(l), 0)
-  const totalFuelLiters = filteredLogs.reduce((s, l) => s + getFuelLiters(l), 0) // ✅ เปลี่ยนมาใช้ปริมาณน้ำมันรวมแทน
+  const totalFuelLiters = filteredLogs.reduce((s, l) => s + getFuelLiters(l), 0)
 
   /* ===================== CHART ===================== */
 
@@ -172,7 +178,6 @@ export default function ReportsPage() {
   /* ===================== EXPORT ===================== */
 
   function exportExcel() {
-    // ปรับ Data ให้เหมาะสมสำหรับออกรายงาน Excel
     const exportData = filteredLogs.map(l => {
       const v = vehicles.find((x) => String(x.id) === String(l.vehicle_id))
       return {
@@ -193,7 +198,6 @@ export default function ReportsPage() {
 
   function exportPDF() {
     const doc = new jsPDF()
-    // รองรับภาษาไทยต้องมีฟอนต์ไทยใน jsPDF (ในส่วนนี้เป็นการ Export เบื้องต้น)
     autoTable(doc, {
       head: [["Date", "Plate", "Start Mil.", "End Mil.", "Distance", "Fuel(L)", "Cost(THB)"]],
       body: filteredLogs.map((l) => {
@@ -216,42 +220,68 @@ export default function ReportsPage() {
   /* ===================== UI ===================== */
 
   return (
-    <div className="min-h-screen bg-slate-50/50 font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 3. ปรับพื้นหลังไปใช้ Next Image
+    <div className="min-h-screen font-sarabun text-black relative bg-slate-900">
       
-      {/* Overlay โปร่งแสง */}
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
-      {/* Header */}
       <div className="relative z-10 border-b border-white/10">
         <PageHeader title="รายงานและสถิติ" />
       </div>
 
       <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 relative z-10">
         
+        {/* ✅ เพิ่ม Title และปุ่ม Refresh ให้เป็นมาตรฐานเดียวกับหน้าอื่น */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">รายงานและสถิติ</h1>
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={fetchData} 
+                disabled={loading}
+                className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+                title="รีเฟรชข้อมูล"
+              >
+                <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+              </Button>
+            </div>
+            <p className="text-white/90 text-sm mt-1 font-medium drop-shadow-sm">สรุปข้อมูลการใช้รถ ค่าใช้จ่าย และสถิติต่างๆ ในระบบ</p>
+          </div>
+        </div>
+
         {/* HEADER & FILTER SECTION */}
-        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white p-6 rounded-[2rem] shadow-sm border border-slate-200">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white/95 backdrop-blur-sm p-6 rounded-[2rem] shadow-sm border border-slate-200">
           <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1.5">
               <Label className="text-slate-500 text-[11px] font-bold uppercase tracking-wider">ตั้งแต่พ.ศ.</Label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="pl-10 h-11 rounded-xl" />
+                <Input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="pl-10 h-11 rounded-xl bg-white text-black" />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-slate-500 text-[11px] font-bold uppercase tracking-wider">ถึงวันที่</Label>
               <div className="relative">
                 <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="pl-10 h-11 rounded-xl" />
+                <Input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="pl-10 h-11 rounded-xl bg-white text-black" />
               </div>
             </div>
             <div className="space-y-1.5">
               <Label className="text-slate-500 text-[11px] font-bold uppercase tracking-wider">เลือกรถ</Label>
               <Select value={selectedVehicle} onValueChange={setSelectedVehicle}>
-                <SelectTrigger className="h-11 rounded-xl font-bold text-slate-700">
+                <SelectTrigger className="h-11 rounded-xl font-bold text-slate-700 bg-white">
                   <SelectValue />
                 </SelectTrigger>
-                <SelectContent className="font-sarabun text-black bg-white">
+                <SelectContent className="font-sarabun text-black bg-white border-slate-200">
                   <SelectItem value="all">รถทุกคันในระบบ</SelectItem>
                   {vehicles.map((v) => (
                     <SelectItem key={v.id} value={String(v.id)}>
@@ -313,13 +343,18 @@ export default function ReportsPage() {
         </div>
 
         {/* CHART SECTION */}
-        <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white">
-          <CardHeader className="border-b border-slate-100 bg-white p-6">
+        <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white/95 backdrop-blur-sm">
+          <CardHeader className="border-b border-slate-100 bg-white/80 p-6">
             <CardTitle className="text-xl font-extrabold text-slate-800">สถิติค่าน้ำมันรายเดือน</CardTitle>
             <CardDescription className="text-sm font-medium text-slate-500">กราฟแสดงแนวโน้มค่าใช้จ่ายน้ำมันตามช่วงเวลาที่เลือก</CardDescription>
           </CardHeader>
-          <CardContent className="p-6 bg-white">
-            {fuelChart.length > 0 ? (
+          <CardContent className="p-6 bg-white/95">
+            {loading ? (
+               <div className="h-[350px] flex flex-col items-center justify-center text-slate-400">
+                 <Loader2 className="size-10 animate-spin text-blue-500 mb-4" />
+                 <p className="font-bold">กำลังประมวลผลข้อมูล...</p>
+               </div>
+            ) : fuelChart.length > 0 ? (
               <div className="h-[350px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={fuelChart} margin={{ top: 20, right: 0, left: 0, bottom: 0 }}>
@@ -362,15 +397,15 @@ export default function ReportsPage() {
           </CardContent>
         </Card>
 
-        {/* TABLE SECTION (เพิ่มความละเอียด) */}
-        <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white">
-          <CardHeader className="border-b border-slate-100 bg-white p-6">
+        {/* TABLE SECTION */}
+        <Card className="border-none shadow-sm rounded-[2rem] overflow-hidden bg-white/95 backdrop-blur-sm">
+          <CardHeader className="border-b border-slate-100 bg-white/80 p-6">
             <CardTitle className="text-xl font-extrabold text-slate-800 flex items-center gap-2">
               <Milestone className="size-6 text-emerald-500" /> รายละเอียดการเดินทาง (สมุดบันทึกการใช้รถ)
             </CardTitle>
             <CardDescription className="text-sm font-medium text-slate-500">ข้อมูลรายละเอียดเลขไมล์และการเบิกจ่ายน้ำมัน</CardDescription>
           </CardHeader>
-          <CardContent className="p-0 bg-white">
+          <CardContent className="p-0 bg-white/95">
             <div className="overflow-x-auto">
               <Table>
                 <TableHeader className="bg-slate-50/50">

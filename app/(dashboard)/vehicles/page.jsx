@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image" // ✅ 1. นำเข้า Image ของ Next.js
 import { 
   Plus, Search, Pencil, Trash2, Loader2, 
   Car, Truck, Bus, Wrench, CheckCircle2, AlertCircle,
-  Calendar as CalendarIcon, Info
+  Calendar as CalendarIcon, Info, RefreshCw // ✅ นำเข้าไอคอนรีเฟรช
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -36,8 +37,9 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/lib/auth-context" // ✅ นำเข้า useAuth
-import Swal from 'sweetalert2' // ✅ นำเข้า Swal
+import { useAuth } from "@/lib/auth-context" 
+import { cn } from "@/lib/utils" // ✅ นำเข้า cn 
+import Swal from 'sweetalert2' 
 
 const statusMap = {
   available: { 
@@ -197,7 +199,7 @@ function VehicleForm({ vehicle, onClose, onSave }) {
 }
 
 export default function VehiclesPage() {
-  const { user } = useAuth() // ✅ ดึงข้อมูลคนล็อกอิน
+  const { user } = useAuth() 
   const [currentUserProfile, setCurrentUserProfile] = useState(null)
 
   const [vehicles, setVehicles] = useState([])
@@ -207,31 +209,39 @@ export default function VehiclesPage() {
   const [editVehicle, setEditVehicle] = useState(undefined)
   const [loading, setLoading] = useState(true)
 
-  // ✅ ดึงโปรไฟล์แอดมิน เพื่อเก็บชื่อลง Log
-  useEffect(() => {
-    async function fetchCurrentUserProfile() {
-      if (!user?.id) return;
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) setCurrentUserProfile(data)
-    }
-    fetchCurrentUserProfile()
+  useEffect(() => { 
+    if(user) loadData() 
   }, [user])
 
-  useEffect(() => { fetchVehicles() }, [])
-
-  async function fetchVehicles() {
+  // ✅ 2. รวบการดึง Profile และ Vehicles ให้อยู่ในฟังก์ชันเดียวกัน (Promise.all)
+  async function loadData() {
     setLoading(true)
-    const { data, error } = await supabase.from("vehicles").select("*").order('created_at', { ascending: false })
-    if (!error) setVehicles(data || [])
-    setLoading(false)
+    try {
+      const promises = [
+        supabase.from("vehicles").select("*").order('created_at', { ascending: false })
+      ];
+      
+      // ดึงโปรไฟล์แอดมินแค่ครั้งแรกที่ยังไม่มีข้อมูล
+      if (user?.id && !currentUserProfile) {
+        promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
+      }
+
+      const results = await Promise.all(promises);
+      
+      if (results[0].data) setVehicles(results[0].data);
+      if (results[1]?.data) setCurrentUserProfile(results[1].data);
+
+    } catch (error) {
+      console.error("Error loading vehicles:", error);
+    } finally {
+      setLoading(false)
+    }
   }
 
-  // ✅ ฟังก์ชันเซฟรถพร้อมบันทึก Log
   async function saveVehicle(data) {
     const payload = { ...data }
     
     if (editVehicle) {
-      // 📝 กรณีอัปเดตรถที่มีอยู่เดิม (UPDATE)
       const oldData = vehicles.find(v => v.id === editVehicle.id)
       const { error } = await supabase.from("vehicles").update(payload).eq("id", editVehicle.id)
       
@@ -247,7 +257,6 @@ export default function VehiclesPage() {
         }]);
       }
     } else {
-      // 📝 กรณีเพิ่มรถใหม่ (CREATE)
       const { data: newVehicle, error } = await supabase.from("vehicles").insert([payload]).select().single()
       
       if (!error && user && newVehicle) {
@@ -262,12 +271,11 @@ export default function VehiclesPage() {
       }
     }
     
-    fetchVehicles(); 
+    loadData(); 
     setDialogOpen(false);
     Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: 'บันทึกข้อมูลรถเรียบร้อย', timer: 1500, showConfirmButton: false });
   }
 
-  // ✅ ฟังก์ชันลบรถพร้อมบันทึก Log
   async function deleteVehicle(id) {
     const result = await Swal.fire({
       title: 'ยืนยันการลบ?',
@@ -280,13 +288,10 @@ export default function VehiclesPage() {
     })
 
     if (result.isConfirmed) {
-      // ดึงข้อมูลเก่าก่อนลบ
       const oldData = vehicles.find(v => v.id === id)
-      
       const { error } = await supabase.from("vehicles").delete().eq("id", id)
       
       if (!error) {
-        // 📝 บันทึก Log ว่าใครลบรถคันไหนออก
         if (user && oldData) {
           await supabase.from('audit_logs').insert([{
             user_id: user.id,
@@ -297,7 +302,7 @@ export default function VehiclesPage() {
             old_data: oldData
           }]);
         }
-        fetchVehicles()
+        loadData()
         Swal.fire({ icon: 'success', title: 'ลบข้อมูลสำเร็จ', timer: 1500, showConfirmButton: false })
       }
     }
@@ -318,9 +323,16 @@ export default function VehiclesPage() {
   }
 
   return (
-    // ✅ อัปเดตพื้นหลังให้เข้ากับธีม
-    <div className="min-h-screen font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 3. อัปเดตพื้นหลังให้ใช้ Component Image 
+    <div className="min-h-screen font-sarabun text-black relative bg-slate-900">
       
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
       <div className="relative z-10 border-b border-white/10">
@@ -336,9 +348,22 @@ export default function VehiclesPage() {
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">จัดการยานพาหนะ</h1>
-            <p className="text-white/80 mt-1 font-medium">บริหารจัดการและติดตามสถานะรถยนต์ในระบบ</p>
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">จัดการยานพาหนะ</h1>
+              {/* ✅ เพิ่มปุ่มกดรีเฟรชข้อมูล */}
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={loadData} 
+                disabled={loading}
+                className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+                title="รีเฟรชข้อมูลรถ"
+              >
+                <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+              </Button>
+            </div>
+            <p className="text-white/90 font-medium drop-shadow-sm">บริหารจัดการและติดตามสถานะรถยนต์ในระบบ</p>
           </div>
 
           <Dialog open={dialogOpen} onOpenChange={(open) => { setDialogOpen(open); if (!open) setEditVehicle(undefined); }}>
@@ -364,8 +389,8 @@ export default function VehiclesPage() {
           </Dialog>
         </div>
 
-        <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
-          <CardHeader className="bg-white border-b py-5 px-6">
+        <Card className="border-none shadow-sm overflow-hidden bg-white/95 backdrop-blur-sm rounded-[2rem]">
+          <CardHeader className="bg-white/80 border-b py-5 px-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
               <div className="relative flex-1 max-w-md">
                 <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
@@ -391,8 +416,8 @@ export default function VehiclesPage() {
           </CardHeader>
           <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50/50">
-                <TableRow className="border-b border-slate-100">
+              <TableHeader className="bg-slate-50/80">
+                <TableRow className="border-b border-slate-200/50">
                   <TableHead className="pl-6 py-5 font-bold uppercase text-[11px] tracking-wider text-slate-500">รายละเอียดรถ</TableHead>
                   <TableHead className="hidden md:table-cell py-5 font-bold uppercase text-[11px] tracking-wider text-center text-slate-500">ประเภท</TableHead>
                   <TableHead className="py-5 font-bold uppercase text-[11px] tracking-wider text-slate-500 text-center">สถานะ</TableHead>
@@ -405,13 +430,13 @@ export default function VehiclesPage() {
                   <TableRow>
                     <TableCell colSpan={5} className="h-40 text-center">
                       <Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />
-                      <p className="text-slate-400 font-medium">กำลังโหลดข้อมูลยานพาหนะ...</p>
+                      <p className="text-slate-500 font-bold mt-2">กำลังโหลดข้อมูลยานพาหนะ...</p>
                     </TableCell>
                   </TableRow>
                 ) : filtered.length > 0 ? filtered.map((vehicle) => {
                   const status = statusMap[vehicle.status] || statusMap.available
                   return (
-                    <TableRow key={vehicle.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
+                    <TableRow key={vehicle.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100/50">
                       <TableCell className="pl-6 py-4">
                         <div className="flex flex-col">
                           <span className="font-extrabold text-slate-900 text-base">{vehicle.license_plate}</span>
@@ -440,11 +465,11 @@ export default function VehiclesPage() {
                       </TableCell>
                       <TableCell className="text-right pr-6">
                         <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-50" 
+                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-blue-600 hover:bg-blue-100" 
                             onClick={() => { setEditVehicle(vehicle); setDialogOpen(true); }}>
                             <Pencil className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-50" 
+                          <Button variant="ghost" size="icon" className="h-9 w-9 rounded-xl text-slate-400 hover:text-rose-600 hover:bg-rose-100" 
                             onClick={() => deleteVehicle(vehicle.id)}>
                             <Trash2 className="size-4" />
                           </Button>
@@ -458,7 +483,7 @@ export default function VehiclesPage() {
                       <div className="p-4 rounded-full bg-slate-50 w-fit mx-auto mb-3">
                         <Info className="size-8 text-slate-300" />
                       </div>
-                      <p className="font-bold">ไม่พบข้อมูลรถที่ค้นหา</p>
+                      <p className="font-bold text-slate-500 text-base">ไม่พบข้อมูลรถที่ค้นหา</p>
                     </TableCell>
                   </TableRow>
                 )}
@@ -479,7 +504,7 @@ function StatCard({ title, value, icon, color }) {
     rose: { bg: "bg-rose-50", border: "border-rose-200" },
   }
   return (
-    <Card className={`border ${styles[color].border} shadow-sm bg-white rounded-[2rem] text-black hover:shadow-md transition-shadow`}>
+    <Card className={`border ${styles[color].border} shadow-sm bg-white/95 backdrop-blur-sm rounded-[2rem] text-black hover:shadow-md transition-shadow`}>
       <CardContent className="p-6 flex items-center gap-5">
         <div className={`p-4 rounded-[1rem] ${styles[color].bg}`}>
           {icon}

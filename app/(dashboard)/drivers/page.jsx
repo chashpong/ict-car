@@ -1,10 +1,11 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import Image from "next/image" // ✅ 1. นำเข้า Next Image
 import { 
   Plus, Search, Pencil, Trash2, Loader2, 
   UserCheck, Users, Car, UserMinus, Info, Link as LinkIcon,
-  UserCircle, CreditCard, Settings, AlertCircle, AlertTriangle 
+  UserCircle, CreditCard, Settings, AlertCircle, AlertTriangle, RefreshCw // ✅ นำเข้า RefreshCw
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -36,7 +37,8 @@ import {
 } from "@/components/ui/select"
 import { Label } from "@/components/ui/label"
 import { supabase } from "@/lib/supabase"
-import { useAuth } from "@/lib/auth-context" // ✅ นำเข้า useAuth
+import { useAuth } from "@/lib/auth-context" 
+import { cn } from "@/lib/utils" // ✅ นำเข้า cn
 import Swal from 'sweetalert2'
 
 // แผนผังสถานะแบบมีจุดสี (Status Dots)
@@ -240,7 +242,7 @@ function DriverForm({ driver, users, onClose, onSave }) {
 }
 
 export default function DriversPage() {
-  const { user } = useAuth() // ✅ ดึงข้อมูลคนล็อกอิน
+  const { user } = useAuth() 
   const [currentUserProfile, setCurrentUserProfile] = useState(null)
   
   const [drivers, setDrivers] = useState([])
@@ -251,43 +253,38 @@ export default function DriversPage() {
   const [editDriver, setEditDriver] = useState(null)
 
   useEffect(() => { 
-    fetchDrivers()
-    fetchUsers() 
-  }, [])
-
-  // ✅ ดึงโปรไฟล์แอดมิน เพื่อเก็บชื่อลง Log
-  useEffect(() => {
-    async function fetchCurrentUserProfile() {
-      if (!user?.id) return;
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) setCurrentUserProfile(data)
-    }
-    fetchCurrentUserProfile()
+    if(user) loadAllData()
   }, [user])
 
-  async function fetchDrivers() {
-    setLoading(true)
-    const { data, error } = await supabase
-      .from("drivers")
-      .select("*")
-      .order('created_at', { ascending: false })
-    
-    if (!error) setDrivers(data || [])
-    setLoading(false)
+  // ✅ 2. รวบรวมการดึงข้อมูลทั้งหมดให้อยู่ในรอบเดียวด้วย Promise.all
+  async function loadAllData() {
+    setLoading(true);
+    try {
+      const promises = [
+        supabase.from("drivers").select("*").order('created_at', { ascending: false }),
+        supabase.from("profiles").select("id, full_name, email")
+      ];
+      
+      // ดึง Profile ของ Admin ด้วยถ้ายังไม่มี
+      if (user?.id && !currentUserProfile) {
+        promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
+      }
+
+      const results = await Promise.all(promises);
+      
+      if (results[0].data) setDrivers(results[0].data);
+      if (results[1].data) setUsers(results[1].data);
+      if (results[2]?.data) setCurrentUserProfile(results[2].data);
+
+    } catch (error) {
+      console.error("Error loading data:", error);
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function fetchUsers() {
-    const { data, error } = await supabase
-      .from("profiles") 
-      .select("id, full_name, email") 
-    
-    if (!error) setUsers(data || [])
-  }
-
-  // ✅ ฟังก์ชันเซฟพร้อมบันทึก Log
   async function saveDriver(data) {
     if (editDriver) {
-      // 📝 กรณีอัปเดตคนขับที่มีอยู่เดิม (UPDATE)
       const oldData = drivers.find(d => d.id === editDriver.id)
       const { error } = await supabase.from("drivers").update(data).eq("id", editDriver.id)
       
@@ -303,7 +300,6 @@ export default function DriversPage() {
         }]);
       }
     } else {
-      // 📝 กรณีเพิ่มคนขับใหม่ (CREATE)
       const { data: newDriver, error } = await supabase.from("drivers").insert([data]).select().single()
       
       if (!error && user && newDriver) {
@@ -317,13 +313,12 @@ export default function DriversPage() {
         }]);
       }
     }
-    fetchDrivers()
+    loadAllData() // ดึงข้อมูลใหม่
     setDialogOpen(false)
     setEditDriver(null)
     Swal.fire({ icon: 'success', title: 'สำเร็จ!', text: 'บันทึกข้อมูลเรียบร้อยแล้ว', timer: 1500, showConfirmButton: false })
   }
 
-  // ✅ ฟังก์ชันลบพร้อมบันทึก Log
   async function handleDelete(id) {
     const result = await Swal.fire({
       title: 'ยืนยันการลบ?',
@@ -336,12 +331,10 @@ export default function DriversPage() {
     })
 
     if (result.isConfirmed) {
-      // ดึงข้อมูลเก่าก่อนลบ
       const oldData = drivers.find(d => d.id === id)
       
       const { error } = await supabase.from("drivers").delete().eq("id", id)
       if (!error) {
-        // 📝 บันทึก Log ว่าใครลบ ลบใครออก
         if (user && oldData) {
           await supabase.from('audit_logs').insert([{
             user_id: user.id,
@@ -352,7 +345,7 @@ export default function DriversPage() {
             old_data: oldData
           }]);
         }
-        fetchDrivers()
+        loadAllData() // ดึงข้อมูลใหม่
         Swal.fire({ icon: 'success', title: 'ลบข้อมูลสำเร็จ', timer: 1500, showConfirmButton: false })
       }
     }
@@ -369,9 +362,16 @@ export default function DriversPage() {
   }
 
   return (
-    // ✅ เพิ่มพื้นหลังและ Overlay ให้เข้าธีม
-    <div className="min-h-screen bg-slate-50/50 font-sarabun text-black bg-cover bg-center bg-no-repeat relative" style={{ backgroundImage: "url('/images/image.png')" }}>
+    // ✅ 3. ใช้ Image ของ Next.js แทน CSS backgroundImage
+    <div className="min-h-screen font-sarabun text-black relative bg-slate-900">
       
+      <Image 
+        src="/images/image.png" 
+        alt="Background" 
+        fill 
+        priority 
+        className="object-cover z-0 opacity-40" 
+      />
       <div className="absolute inset-0 bg-black/60 z-0"></div>
 
       <div className="relative z-10 border-b border-white/10">
@@ -387,9 +387,22 @@ export default function DriversPage() {
         </div>
 
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-white">จัดการคนขับรถ</h1>
-            <p className="text-white/80 mt-1 font-medium">รายชื่อและสถานะความพร้อมของพนักงานขับรถ</p>
+          <div className="space-y-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">จัดการคนขับรถ</h1>
+              {/* ✅ เพิ่มปุ่มรีเฟรชข้อมูล */}
+              <Button 
+                variant="outline" 
+                size="icon" 
+                onClick={loadAllData} 
+                disabled={loading}
+                className="h-8 w-8 rounded-full border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white transition-all backdrop-blur-sm"
+                title="รีเฟรชข้อมูลคนขับ"
+              >
+                <RefreshCw className={cn("size-4", loading && "animate-spin")} />
+              </Button>
+            </div>
+            <p className="text-white/90 mt-1 font-medium drop-shadow-sm">รายชื่อและสถานะความพร้อมของพนักงานขับรถ</p>
           </div>
 
           <Dialog open={dialogOpen} onOpenChange={(o) => { setDialogOpen(o); if (!o) setEditDriver(null); }}>
@@ -415,8 +428,8 @@ export default function DriversPage() {
           </Dialog>
         </div>
 
-        <Card className="border-none shadow-sm overflow-hidden bg-white rounded-[2rem]">
-          <CardHeader className="bg-white border-b py-5 px-6">
+        <Card className="border-none shadow-sm overflow-hidden bg-white/95 backdrop-blur-sm rounded-[2rem]">
+          <CardHeader className="bg-white/80 border-b py-5 px-6">
             <div className="relative max-w-md">
               <Search className="absolute left-4 top-1/2 size-4 -translate-y-1/2 text-slate-400" />
               <Input
@@ -430,8 +443,8 @@ export default function DriversPage() {
 
           <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50/50">
-                <TableRow className="border-b border-slate-100">
+              <TableHeader className="bg-slate-50/80">
+                <TableRow className="border-b border-slate-200/50">
                   <TableHead className="font-bold text-slate-500 text-[11px] uppercase tracking-widest pl-8 py-5">ชื่อ-นามสกุล</TableHead>
                   <TableHead className="font-bold text-slate-500 text-[11px] uppercase tracking-widest py-5 text-center">เบอร์โทรศัพท์</TableHead>
                   <TableHead className="font-bold text-slate-500 text-[11px] uppercase tracking-widest py-5 text-center">เลขใบขับขี่</TableHead>
@@ -442,17 +455,17 @@ export default function DriversPage() {
               </TableHeader>
               <TableBody>
                 {loading ? (
-                  <TableRow><TableCell colSpan={6} className="h-48 text-center text-muted-foreground"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600" />กำลังโหลดข้อมูล...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={6} className="h-48 text-center text-slate-500"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />กำลังโหลดข้อมูล...</TableCell></TableRow>
                 ) : filtered.length > 0 ? filtered.map(driver => {
                   const status = statusMap[driver.status] || statusMap.inactive
                   const expiryInfo = checkExpiryStatus(driver.license_expiry) 
 
                   return (
-                    <TableRow key={driver.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50 text-black">
+                    <TableRow key={driver.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-100/50 text-black">
                       <TableCell className="pl-8 py-4">
                         <p className="font-bold text-slate-900 text-[15px]">{driver.name}</p>
                         {driver.user_id && (
-                          <p className="text-[11px] text-blue-600 font-bold flex items-center mt-1 bg-blue-50 w-fit px-2 py-0.5 rounded-full">
+                          <p className="text-[11px] text-blue-600 font-bold flex items-center mt-1 bg-blue-50 w-fit px-2 py-0.5 rounded-full border border-blue-100">
                             <LinkIcon className="size-3 mr-1" /> ผูกบัญชีแล้ว
                           </p>
                         )}
@@ -472,7 +485,7 @@ export default function DriversPage() {
                             {formatThaiDate(driver.license_expiry)}
                           </span>
                           {expiryInfo.status !== 'valid' && expiryInfo.status !== 'none' && (
-                            <span className={`text-[9px] font-bold ${expiryInfo.color} ${expiryInfo.bg} px-1.5 py-0.5 rounded mt-1 flex items-center`}>
+                            <span className={`text-[9px] font-bold ${expiryInfo.color} ${expiryInfo.bg} px-1.5 py-0.5 rounded mt-1 flex items-center border ${expiryInfo.status === 'expired' ? 'border-rose-200' : 'border-amber-200'}`}>
                               {expiryInfo.icon} {expiryInfo.label}
                             </span>
                           )}
@@ -487,10 +500,10 @@ export default function DriversPage() {
                       </TableCell>
                       <TableCell className="text-right pr-8">
                         <div className="flex justify-end gap-1">
-                          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-xl" onClick={() => { setEditDriver(driver); setDialogOpen(true); }}>
+                          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-blue-600 hover:bg-blue-100 rounded-xl" onClick={() => { setEditDriver(driver); setDialogOpen(true); }}>
                             <Pencil className="size-4" />
                           </Button>
-                          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-rose-600 hover:bg-rose-50 rounded-xl" onClick={() => handleDelete(driver.id)}>
+                          <Button variant="ghost" size="icon" className="text-slate-400 hover:text-rose-600 hover:bg-rose-100 rounded-xl" onClick={() => handleDelete(driver.id)}>
                             <Trash2 className="size-4" />
                           </Button>
                         </div>
@@ -499,11 +512,11 @@ export default function DriversPage() {
                   )
                 }) : (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-48 text-center text-muted-foreground">
+                    <TableCell colSpan={6} className="h-48 text-center text-slate-400">
                       <div className="p-4 rounded-full bg-slate-50 w-fit mx-auto mb-3">
                         <Info className="size-8 text-slate-300" />
                       </div>
-                      <p className="font-bold text-slate-400">ไม่พบรายชื่อคนขับรถในระบบ</p>
+                      <p className="font-bold text-slate-500 text-base">ไม่พบรายชื่อคนขับรถในระบบ</p>
                     </TableCell>
                   </TableRow>
                 )}
@@ -523,7 +536,7 @@ function StatCard({ title, value, icon, color }) {
     amber: { bg: "bg-amber-50", border: "border-amber-200" },
   }
   return (
-    <Card className={`border ${styles[color].border} shadow-sm bg-white rounded-[2rem] text-black overflow-hidden hover:shadow-md transition-shadow`}>
+    <Card className={`border ${styles[color].border} shadow-sm bg-white/95 backdrop-blur-sm rounded-[2rem] text-black overflow-hidden hover:shadow-md transition-shadow`}>
       <CardContent className="p-6 flex items-center gap-5">
         <div className={`p-4 rounded-[1rem] ${styles[color].bg}`}>
           {icon}
