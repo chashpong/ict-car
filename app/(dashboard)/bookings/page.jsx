@@ -110,6 +110,7 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
 }
 
 // --- 3. ฟอร์มการจอง (BookingForm) ---
+// --- 3. ฟอร์มการจอง (BookingForm) ---
 function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) { 
   const [formData, setFormData] = useState({
     user_name: "", position: "", department: "", 
@@ -133,140 +134,146 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
   }
 
   return (
-    <div className="flex flex-col gap-6 py-4 font-sarabun text-slate-800">
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-        <div className="space-y-4 border-r pr-6 border-slate-100">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ผู้ขอใช้รถ</Label>
-              <Input value={formData.user_name} onChange={(e) => setFormData({ ...formData, user_name: e.target.value })} placeholder="ชื่อ-นามสกุล" className="h-11 rounded-xl bg-white border-slate-200" />
+    // ✅ เพิ่ม max-h-[75vh] และ overflow-y-auto ตรงนี้เพื่อให้เนื้อหาด้านในเลื่อนได้
+    <div className="flex flex-col py-4 font-sarabun text-slate-800 max-h-[75vh]">
+      
+      {/* 🔴 ส่วนเนื้อหาฟอร์ม (เลื่อนได้) */}
+      <div className="flex-1 overflow-y-auto pr-2 pb-4 space-y-6 custom-scrollbar">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <div className="space-y-4 md:border-r md:pr-6 border-slate-100">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ผู้ขอใช้รถ</Label>
+                <Input value={formData.user_name} onChange={(e) => setFormData({ ...formData, user_name: e.target.value })} placeholder="ชื่อ-นามสกุล" className="h-11 rounded-xl bg-white border-slate-200" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ตำแหน่ง</Label>
+                <Input value={formData.position} onChange={(e) => setFormData({ ...formData, position: e.target.value })} placeholder="ระบุตำแหน่ง" className="h-11 rounded-xl bg-white border-slate-200" />
+              </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ตำแหน่ง</Label>
-              <Input value={formData.position} onChange={(e) => setFormData({ ...formData, position: e.target.value })} placeholder="ระบุตำแหน่ง" className="h-11 rounded-xl bg-white border-slate-200" />
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-bold text-slate-500 uppercase ml-1">สังกัดหน่วยงาน</Label>
-            <Input value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} placeholder="กอง/ฝ่าย" className="h-11 rounded-xl bg-white border-slate-200" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-bold text-slate-500 uppercase ml-1">วัตถุประสงค์การใช้รถ <span className="text-red-500">*</span></Label>
-            <Input value={formData.purpose} onChange={(e) => setFormData({ ...formData, purpose: e.target.value })} placeholder="เช่น ไปราชการเรื่อง..." className="h-11 rounded-xl bg-white border-slate-200" />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-bold text-slate-500 uppercase ml-1">รายละเอียดภารกิจ</Label>
-            <Textarea rows={2} value={formData.duty_details} onChange={(e) => setFormData({ ...formData, duty_details: e.target.value })} placeholder="รายละเอียดเพิ่มเติม" className="rounded-xl resize-none font-sarabun bg-white border-slate-200" />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">จำนวนผู้ร่วมทาง (คน)</Label>
-              <Input type="number" min={1} value={formData.passengers} onChange={(e) => setFormData({ ...formData, passengers: e.target.value })} className="h-11 rounded-xl bg-white border-slate-200" />
+              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">สังกัดหน่วยงาน</Label>
+              <Input value={formData.department} onChange={(e) => setFormData({ ...formData, department: e.target.value })} placeholder="กอง/ฝ่าย" className="h-11 rounded-xl bg-white border-slate-200" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ประเภทรถที่ขอ</Label>
-              <Select onValueChange={(v) => setFormData({ ...formData, vehicle_type_preference: v })} value={formData.vehicle_type_preference}>
-                <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent className="font-sarabun text-black bg-white">
-                  {vehicleTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs font-bold text-slate-500 uppercase ml-1">เบอร์ติดต่อกลับ <span className="text-red-500">*</span></Label>
-            <div className="relative group">
-              <Phone className="absolute left-3 top-3.5 size-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
-              <Input value={formData.contact_phone} onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })} placeholder="ชื่อ / เบอร์โทรศัพท์" className="pl-10 h-11 rounded-xl bg-white border-slate-200" />
-            </div>
-          </div>
-        </div>
-
-        <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 ml-1">วันที่เริ่ม <span className="text-red-500">*</span></Label>
-              <DatePickerThai dateValue={formData.start_date} onDateChange={(d) => setFormData({ ...formData, start_date: d })} placeholder="เริ่มเดินทาง" />
+              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">วัตถุประสงค์การใช้รถ <span className="text-red-500">*</span></Label>
+              <Input value={formData.purpose} onChange={(e) => setFormData({ ...formData, purpose: e.target.value })} placeholder="เช่น ไปราชการเรื่อง..." className="h-11 rounded-xl bg-white border-slate-200" />
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 ml-1">เวลาเริ่ม <span className="text-red-500">*</span></Label>
-              <TimePickerClock value={formData.start_time} onChange={(v) => setFormData({ ...formData, start_time: v })} />
+              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">รายละเอียดภารกิจ</Label>
+              <Textarea rows={2} value={formData.duty_details} onChange={(e) => setFormData({ ...formData, duty_details: e.target.value })} placeholder="รายละเอียดเพิ่มเติม" className="rounded-xl resize-none font-sarabun bg-white border-slate-200" />
             </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 ml-1">วันที่สิ้นสุด <span className="text-red-500">*</span></Label>
-              <DatePickerThai dateValue={formData.end_date} onDateChange={(d) => setFormData({ ...formData, end_date: d })} placeholder="เดินทางกลับ" />
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 uppercase ml-1">จำนวนผู้ร่วมทาง (คน)</Label>
+                <Input type="number" min={1} value={formData.passengers} onChange={(e) => setFormData({ ...formData, passengers: e.target.value })} className="h-11 rounded-xl bg-white border-slate-200" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ประเภทรถที่ขอ</Label>
+                <Select onValueChange={(v) => setFormData({ ...formData, vehicle_type_preference: v })} value={formData.vehicle_type_preference}>
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="font-sarabun text-black bg-white">
+                    {vehicleTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
             <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 ml-1">เวลาสิ้นสุด <span className="text-red-500">*</span></Label>
-              <TimePickerClock value={formData.end_time} onChange={(v) => setFormData({ ...formData, end_time: v })} />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4 border-b pb-4 border-dashed border-slate-200">
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 ml-1">ต้นทาง</Label>
-              <Input value={formData.origin} onChange={(e) => setFormData({ ...formData, origin: e.target.value })} className="h-11 rounded-xl bg-white border-slate-200" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 ml-1">ปลายทาง <span className="text-red-500">*</span></Label>
-              <Input value={formData.destination} onChange={(e) => setFormData({ ...formData, destination: e.target.value })} className="h-11 rounded-xl bg-white border-slate-200" />
+              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">เบอร์ติดต่อกลับ <span className="text-red-500">*</span></Label>
+              <div className="relative group">
+                <Phone className="absolute left-3 top-3.5 size-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+                <Input value={formData.contact_phone} onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })} placeholder="ชื่อ / เบอร์โทรศัพท์" className="pl-10 h-11 rounded-xl bg-white border-slate-200" />
+              </div>
             </div>
           </div>
 
-          <div className="space-y-3">
-            <div className="flex items-center justify-between">
-              <Label className="font-bold flex items-center gap-2 text-slate-700">
-                <Car className="size-4 text-blue-600" /> ตรวจสถานะรถที่ว่าง
-              </Label>
-              <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-100 font-bold text-[10px]">
-                รถทั้งหมด {vehicles.length} คัน
-              </Badge>
+          <div className="space-y-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 ml-1">วันที่เริ่ม <span className="text-red-500">*</span></Label>
+                <DatePickerThai dateValue={formData.start_date} onDateChange={(d) => setFormData({ ...formData, start_date: d })} placeholder="เริ่มเดินทาง" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 ml-1">เวลาเริ่ม <span className="text-red-500">*</span></Label>
+                <TimePickerClock value={formData.start_time} onChange={(v) => setFormData({ ...formData, start_time: v })} />
+              </div>
             </div>
-            <div className="grid grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
-              {vehicles.map((car) => {
-                const avail = getVehicleStatus(car); 
-                const isSelected = formData.vehicle_id === car.id;
-                const isBusy = avail.status === 'busy';
-                return (
-                  <div 
-                    key={car.id} 
-                    onClick={() => !isBusy && setFormData({ ...formData, vehicle_id: car.id })}
-                    className={cn(
-                      "p-3 rounded-2xl border-2 transition-all cursor-pointer relative group",
-                      isSelected ? "border-blue-600 bg-blue-50 shadow-md" : "border-slate-100 bg-white hover:border-slate-200",
-                      isBusy && "opacity-50 cursor-not-allowed bg-slate-50 grayscale"
-                    )}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className={cn("p-2 rounded-xl", isBusy ? "bg-slate-200" : "bg-emerald-100 text-emerald-600")}>
-                        <Car className="size-4" />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="font-bold text-xs truncate text-slate-900">{car.license_plate}</p>
-                        <p className="text-[10px] text-slate-500 truncate">{car.brand} {car.model}</p>
-                        <div className={cn("mt-1 flex items-center gap-1 text-[9px] font-bold", isBusy ? "text-rose-600" : "text-emerald-600")}>
-                           {isBusy ? <AlertCircle className="size-2" /> : <CheckCircle2 className="size-2" />}
-                           {isBusy ? avail.reason : "ว่างพร้อมใช้"}
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 ml-1">วันที่สิ้นสุด <span className="text-red-500">*</span></Label>
+                <DatePickerThai dateValue={formData.end_date} onDateChange={(d) => setFormData({ ...formData, end_date: d })} placeholder="เดินทางกลับ" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 ml-1">เวลาสิ้นสุด <span className="text-red-500">*</span></Label>
+                <TimePickerClock value={formData.end_time} onChange={(v) => setFormData({ ...formData, end_time: v })} />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4 border-b pb-4 border-dashed border-slate-200">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 ml-1">ต้นทาง</Label>
+                <Input value={formData.origin} onChange={(e) => setFormData({ ...formData, origin: e.target.value })} className="h-11 rounded-xl bg-white border-slate-200" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 ml-1">ปลายทาง <span className="text-red-500">*</span></Label>
+                <Input value={formData.destination} onChange={(e) => setFormData({ ...formData, destination: e.target.value })} className="h-11 rounded-xl bg-white border-slate-200" />
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label className="font-bold flex items-center gap-2 text-slate-700">
+                  <Car className="size-4 text-blue-600" /> ตรวจสถานะรถที่ว่าง
+                </Label>
+                <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-100 font-bold text-[10px]">
+                  รถทั้งหมด {vehicles.length} คัน
+                </Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
+                {vehicles.map((car) => {
+                  const avail = getVehicleStatus(car); 
+                  const isSelected = formData.vehicle_id === car.id;
+                  const isBusy = avail.status === 'busy';
+                  return (
+                    <div 
+                      key={car.id} 
+                      onClick={() => !isBusy && setFormData({ ...formData, vehicle_id: car.id })}
+                      className={cn(
+                        "p-3 rounded-2xl border-2 transition-all cursor-pointer relative group",
+                        isSelected ? "border-blue-600 bg-blue-50 shadow-md" : "border-slate-100 bg-white hover:border-slate-200",
+                        isBusy && "opacity-50 cursor-not-allowed bg-slate-50 grayscale"
+                      )}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className={cn("p-2 rounded-xl", isBusy ? "bg-slate-200" : "bg-emerald-100 text-emerald-600")}>
+                          <Car className="size-4" />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-xs truncate text-slate-900">{car.license_plate}</p>
+                          <p className="text-[10px] text-slate-500 truncate">{car.brand} {car.model}</p>
+                          <div className={cn("mt-1 flex items-center gap-1 text-[9px] font-bold", isBusy ? "text-rose-600" : "text-emerald-600")}>
+                             {isBusy ? <AlertCircle className="size-2" /> : <CheckCircle2 className="size-2" />}
+                             {isBusy ? avail.reason : "ว่างพร้อมใช้"}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                )
-              })}
+                  )
+                })}
+              </div>
             </div>
           </div>
         </div>
       </div>
       
-      <div className="flex justify-end gap-3 pt-6 border-t border-slate-100 mt-2">
-        <Button variant="ghost" onClick={onClose} className="px-10 h-12 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">ยกเลิก</Button>
+      {/* 🔴 ส่วน Footer ปุ่มกด (ยึดติดอยู่ล่างสุดเสมอ) */}
+      <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-slate-100 mt-2 shrink-0">
+        <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto px-10 h-12 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">ยกเลิก</Button>
         <Button 
           onClick={() => onSave(formData)} 
           disabled={!formData.vehicle_id || !formData.purpose || !formData.contact_phone}
-          className="bg-[#0f172a] hover:bg-slate-800 px-12 h-12 rounded-2xl font-bold text-white shadow-lg transition-all hover:scale-[1.02]"
+          className="w-full sm:w-auto bg-[#0f172a] hover:bg-slate-800 px-12 h-12 rounded-2xl font-bold text-white shadow-lg transition-all hover:scale-[1.02]"
         >
           ส่งคำขอจองรถยนต์
         </Button>
