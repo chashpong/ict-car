@@ -236,6 +236,7 @@ export default function VehiclesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editVehicle, setEditVehicle] = useState(undefined)
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null) // ✅ 1. เพิ่ม State ดัก Error
 
   useEffect(() => { 
     if(user) loadData() 
@@ -243,6 +244,7 @@ export default function VehiclesPage() {
 
   async function loadData() {
     setLoading(true)
+    setFetchError(null) // ✅ เคลียร์ Error เดิมทิ้ง
     try {
       const promises = [
         supabase.from("vehicles").select("*").order('created_at', { ascending: false })
@@ -251,10 +253,16 @@ export default function VehiclesPage() {
         promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
       }
       const results = await Promise.all(promises);
+
+      // ✅ 2. ตรวจสอบ Error จากฐานข้อมูล
+      if (results[0].error) throw results[0].error;
+      
       if (results[0].data) setVehicles(results[0].data);
       if (results[1]?.data) setCurrentUserProfile(results[1].data);
     } catch (error) {
       console.error("Error loading vehicles:", error);
+      // ✅ 3. เซ็ตค่า Error ไปโชว์หน้า UI
+      setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ตหรือปิดส่วนขยายเบราว์เซอร์");
     } finally {
       setLoading(false)
     }
@@ -403,6 +411,12 @@ export default function VehiclesPage() {
                 <Loader2 className="animate-spin mb-2 text-blue-500 size-6" />
                 <p className="text-sm font-semibold">กำลังโหลดข้อมูลยานพาหนะ...</p>
               </div>
+            ) : fetchError ? (
+              // ✅ 4. แสดง UI แจ้งเตือน Error บนมือถือ
+              <div className="py-16 flex flex-col items-center text-rose-500">
+                <AlertCircle className="size-8 mb-2 text-rose-400" />
+                <p className="text-sm font-semibold text-center">{fetchError}</p>
+              </div>
             ) : filtered.length > 0 ? filtered.map(vehicle => (
               <VehicleCard
                 key={vehicle.id}
@@ -436,6 +450,14 @@ export default function VehiclesPage() {
                     <TableCell colSpan={5} className="h-40 text-center">
                       <Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />
                       <p className="text-slate-500 font-bold mt-2">กำลังโหลดข้อมูลยานพาหนะ...</p>
+                    </TableCell>
+                  </TableRow>
+                ) : fetchError ? (
+                  // ✅ 5. แสดง UI แจ้งเตือน Error บนตารางเดสก์ท็อป
+                  <TableRow>
+                    <TableCell colSpan={5} className="h-40 text-center text-rose-500">
+                      <AlertCircle className="size-8 mx-auto mb-2 text-rose-400 animate-bounce" />
+                      <p className="font-bold text-base">{fetchError}</p>
                     </TableCell>
                   </TableRow>
                 ) : filtered.length > 0 ? filtered.map((vehicle) => {

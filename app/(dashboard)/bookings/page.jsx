@@ -84,7 +84,6 @@ function TimePickerClock({ value, onChange }) {
 
 function DatePickerThai({ dateValue, onDateChange, placeholder }) {
   const date = dateValue ? new Date(dateValue) : undefined;
-  
   const today = startOfToday(); 
 
   return (
@@ -110,7 +109,6 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
 }
 
 // --- 3. ฟอร์มการจอง (BookingForm) ---
-// --- 3. ฟอร์มการจอง (BookingForm) ---
 function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) { 
   const [formData, setFormData] = useState({
     user_name: "", position: "", department: "", 
@@ -134,10 +132,7 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
   }
 
   return (
-    // ✅ เพิ่ม max-h-[75vh] และ overflow-y-auto ตรงนี้เพื่อให้เนื้อหาด้านในเลื่อนได้
     <div className="flex flex-col py-4 font-sarabun text-slate-800 max-h-[75vh]">
-      
-      {/* 🔴 ส่วนเนื้อหาฟอร์ม (เลื่อนได้) */}
       <div className="flex-1 overflow-y-auto pr-2 pb-4 space-y-6 custom-scrollbar">
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div className="space-y-4 md:border-r md:pr-6 border-slate-100">
@@ -267,7 +262,6 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
         </div>
       </div>
       
-      {/* 🔴 ส่วน Footer ปุ่มกด (ยึดติดอยู่ล่างสุดเสมอ) */}
       <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-slate-100 mt-2 shrink-0">
         <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto px-10 h-12 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">ยกเลิก</Button>
         <Button 
@@ -298,7 +292,6 @@ function BookingTimelineDialog({ booking, onClose }) {
     const stepIndex = flow.indexOf(stepName);
 
     if (stepIndex < currentIndex) return 'completed';
-    // ✅ แก้ไขส่วนนี้: ถ้าระบบบอกว่า "เสร็จสิ้น" ให้ขึ้นเช็คถูกเลย ไม่ต้องหมุนรอ
     if (stepIndex === currentIndex) return status === 'completed' ? 'completed' : 'current';
     return 'pending';
   };
@@ -311,7 +304,6 @@ function BookingTimelineDialog({ booking, onClose }) {
   ];
 
   return (
-    // ✅ ลบรูปแบบ background image ออกไปให้เหลือแค่สีขาวเรียบๆ กันขึ้น 404
     <div className="font-sarabun text-black flex flex-col h-full w-full bg-white overflow-hidden rounded-[2.5rem] relative">
       <div className="bg-[#0f172a] p-6 md:p-8 text-white shrink-0 relative z-10 shadow-md">
         <div className="flex justify-between items-start mb-4">
@@ -400,16 +392,28 @@ export default function BookingsPage() {
   const [statusFilter, setStatusFilter] = useState("all")
   const [createOpen, setCreateOpen] = useState(false)
   const [isLoading, setIsLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null) // ✅ เพิ่ม State เพื่อเก็บสถานะ Error
 
   const [viewBooking, setViewBooking] = useState(null)
 
   useEffect(() => { loadData() }, [user]) 
 
   async function loadData() {
-    if (!user) return;
+    // ✅ ถ้า Chrome บล็อกคุกกี้ ทำให้โหลด user ไม่ได้ ให้หยุดหมุนทันที
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+    
     setIsLoading(true);
+    setFetchError(null); // เคลียร์ error เดิมทิ้งก่อนเริ่มดึงใหม่
 
-    let query = supabase.from("bookings").select("*, vehicles(license_plate, brand, model)").order("created_at", { ascending: false });
+    // ✅ Optimize 1: จำกัดแถวแค่ 50 รายการล่าสุด
+    let query = supabase
+      .from("bookings")
+      .select("*, vehicles(license_plate, brand, model)")
+      .order("created_at", { ascending: false })
+      .limit(50); 
     
     if (user.role === "user") {
       query = query.eq("user_id", user.id);
@@ -417,8 +421,9 @@ export default function BookingsPage() {
 
     try {
       const promises = [
-        query.limit(100),
-        supabase.from("vehicles").select("*")
+        query,
+        // ✅ Optimize 2: เลือกเฉพาะคอลัมน์ที่จำเป็นจากตาราง vehicles ช่วยให้โหลดไวขึ้นมาก
+        supabase.from("vehicles").select("id, license_plate, brand, model, status")
       ];
 
       if (user?.id && !userProfile) {
@@ -427,13 +432,20 @@ export default function BookingsPage() {
 
       const results = await Promise.all(promises);
 
+      // ✅ ดักจับ Error จากฝั่ง Supabase (ถ้าข้อมูลพัง ระบบจะโยนไปเข้า catch)
+      if (results[0].error) throw results[0].error;
+      if (results[1].error) throw results[1].error;
+
       if (results[0].data) setBookings(results[0].data);
       if (results[1].data) setVehicles(results[1].data);
-      if (results[2]?.data) setUserProfile(results[2].data);
+      if (results[2] && results[2].data) setUserProfile(results[2].data);
+      
     } catch (error) {
-      console.error("Load Data Error:", error)
+      console.error("Load Data Error:", error);
+      // ✅ ตั้งค่า Error Message ให้ผู้ใช้ทราบ
+      setFetchError("เกิดข้อผิดพลาดในการดึงข้อมูล กรุณาตรวจสอบการเชื่อมต่อ หรือปิดส่วนขยาย (AdBlock) ของเบราว์เซอร์ชั่วคราว");
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // ✅ บังคับหยุดหมุน ไม่ว่าจะสำเร็จหรือพังก็ตาม
     }
   }
 
@@ -603,6 +615,20 @@ export default function BookingsPage() {
               <TableBody>
                 {isLoading ? (
                   <TableRow><TableCell colSpan={10} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />กำลังโหลดข้อมูล...</TableCell></TableRow>
+                ) : fetchError ? (
+                  // ✅ แสดงกล่องแจ้งเตือน Error ชัดเจน หากเกิดปัญหาดึงข้อมูล
+                  <TableRow>
+                    <TableCell colSpan={10} className="h-48 text-center bg-rose-50/50">
+                      <div className="flex flex-col items-center justify-center p-4">
+                        <AlertCircle className="mb-3 text-rose-500 size-10 animate-bounce" />
+                        <p className="text-rose-800 font-extrabold text-lg mb-1">พบปัญหาการเชื่อมต่อฐานข้อมูล</p>
+                        <p className="text-rose-600/80 text-sm max-w-md">{fetchError}</p>
+                        <Button variant="outline" onClick={loadData} className="mt-5 border-rose-200 text-rose-600 hover:bg-rose-100 hover:text-rose-800 rounded-xl px-6 h-10 font-bold">
+                          <RefreshCw className="mr-2 size-4" /> ลองโหลดใหม่อีกครั้ง
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
                 ) : filtered.length === 0 ? (
                   <TableRow><TableCell colSpan={10} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
                 ) : filtered.map((b) => (

@@ -9,7 +9,7 @@ import {
   Building2, Clock, Briefcase, UserCircle, Phone,
   Car, Info, MapPinned, UserPlus,
   PenTool, Eraser, Image as ImageIcon, Save, CheckCircle2,
-  Printer, Trash2, Upload, RefreshCw, Loader2, FileText, Settings
+  Printer, Trash2, Upload, RefreshCw, Loader2, FileText, Settings, AlertCircle
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -548,6 +548,7 @@ export default function ApprovalsPage() {
   const [availableDrivers, setAvailableDrivers] = useState([])
   const [selectedDriverId, setSelectedDriverId] = useState("")
   const [isLoading, setIsLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null) // ✅ เพิ่ม State สำหรับดัก Error
 
   useEffect(() => {
     loadAllData()
@@ -568,18 +569,33 @@ export default function ApprovalsPage() {
   }, [user])
 
   async function loadAllData() {
+    // ✅ เช็ค Auth ก่อนทำงาน เพื่อป้องกัน Error ลูป
+    if (!user) {
+      setIsLoading(false);
+      return;
+    }
+
     setIsLoading(true);
+    setFetchError(null); // เคลียร์ error เก่าก่อนดึงใหม่
+
     try {
       const [bRes, dRes] = await Promise.all([
         supabase.from("bookings").select("*, vehicles(license_plate, brand, model, last_mileage)").eq("status", "pending").order("created_at", { ascending: true }),
         supabase.from("drivers").select("*").in("status", ["ว่าง", "available"])
       ]);
+
+      // ✅ ดักจับ Error แจ้งเตือนถ้าระบบโหลดไม่ขึ้น
+      if (bRes.error) throw bRes.error;
+      if (dRes.error) throw dRes.error;
+
       setBookings(bRes.data || []);
       setAvailableDrivers(dRes.data || []);
     } catch (error) {
       console.error("Error loading data:", error);
+      // ✅ เซ็ตค่า Error เพื่อนำไปโชว์ใน UI
+      setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ต หรือปิดส่วนขยายบล็อกโฆษณา (AdBlock)");
     } finally {
-      setIsLoading(false);
+      setIsLoading(false); // ✅ ปิดสถานะโหลดเสมอ
     }
   }
 
@@ -657,6 +673,16 @@ export default function ApprovalsPage() {
           <Card className="h-96 flex flex-col items-center justify-center border-none rounded-2xl bg-white/90 backdrop-blur-sm shadow-sm text-black">
             <Loader2 className="size-10 animate-spin text-blue-500 mb-4" />
             <p className="font-bold text-slate-500 text-lg">กำลังโหลดข้อมูลคำขอ...</p>
+          </Card>
+        ) : fetchError ? (
+          // ✅ แสดง UI แจ้งเตือน Error ถ้าโหลดข้อมูลพัง
+          <Card className="h-96 flex flex-col items-center justify-center border-none rounded-2xl bg-rose-50/90 backdrop-blur-sm shadow-sm text-black">
+            <AlertCircle className="size-12 text-rose-500 mb-4 animate-bounce" />
+            <p className="font-bold text-slate-800 text-lg mb-2">พบปัญหาการโหลดข้อมูล</p>
+            <p className="text-slate-600/80 text-sm max-w-md text-center mb-6">{fetchError}</p>
+            <Button variant="outline" onClick={loadAllData} className="border-rose-200 text-rose-600 hover:bg-rose-100 hover:text-rose-800 rounded-xl px-6 font-bold shadow-sm">
+              <RefreshCw className="mr-2 size-4" /> ลองโหลดใหม่อีกครั้ง
+            </Button>
           </Card>
         ) : bookings.length === 0 ? (
           <Card className="h-96 flex flex-col items-center justify-center border-none rounded-2xl bg-white/95 backdrop-blur-sm shadow-sm text-black">

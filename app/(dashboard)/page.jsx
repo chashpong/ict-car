@@ -1,13 +1,13 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import Image from "next/image" // ✅ นำเข้า Next Image
+import Image from "next/image" 
 import { useRouter } from "next/navigation" 
 import { useAuth } from "@/lib/auth-context" 
-import { cn } from "@/lib/utils" // ✅ นำเข้า cn
+import { cn } from "@/lib/utils" 
 import { 
   ClipboardList, Hourglass, CheckCircle, Map, Flag, 
-  Car, CheckCircle2, UserSquare2, TrendingUp, History, Loader2, RefreshCw // ✅ นำเข้า RefreshCw
+  Car, CheckCircle2, UserSquare2, TrendingUp, History, Loader2, RefreshCw, AlertCircle
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -49,6 +49,8 @@ export default function AdvancedDashboardPage() {
   const router = useRouter()
 
   const [loading, setLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null) // ✅ เพิ่ม State ดัก Error
+
   const [stats, setStats] = useState({
     totalBookings: 0, pending: 0, approved: 0, started: 0, completed: 0,
     totalCars: 0, availableCars: 0,
@@ -77,26 +79,28 @@ export default function AdvancedDashboardPage() {
     }
   }, [user])
 
-  // ✅ ปรับแก้ให้ใช้ Promise.all ดึงข้อมูลทุกอย่างพร้อมกัน
   async function fetchDashboardData() {
     setLoading(true)
+    setFetchError(null) // ✅ เคลียร์ Error ก่อนดึงใหม่
     try {
-      const [
-        { data: bookings },
-        { data: vehicles },
-        { data: drivers },
-        { data: logs }
-      ] = await Promise.all([
+      // ✅ รับค่า Response ทั้งก้อน (มีทั้ง data และ error)
+      const [bookingsRes, vehiclesRes, driversRes, logsRes] = await Promise.all([
         supabase.from("bookings").select("*").order("created_at", { ascending: false }),
         supabase.from("vehicles").select("*"),
         supabase.from("drivers").select("id"),
         supabase.from("logbooks").select("distance")
       ]);
 
-      const realDistance = logs?.reduce((sum, item) => sum + Number(item.distance || 0), 0) || 0;
+      // ✅ ดักจับ Error แจ้งเตือนแอดมินทันทีถ้าระบบโหลดไม่ขึ้น
+      if (bookingsRes.error) throw bookingsRes.error;
+      if (vehiclesRes.error) throw vehiclesRes.error;
+      if (driversRes.error) throw driversRes.error;
+      if (logsRes.error) throw logsRes.error;
 
-      const bData = bookings || []
-      const vData = vehicles || []
+      const realDistance = logsRes.data?.reduce((sum, item) => sum + Number(item.distance || 0), 0) || 0;
+
+      const bData = bookingsRes.data || []
+      const vData = vehiclesRes.data || []
 
       const pendingCount = bData.filter(b => b.status === "pending").length
       const approvedCount = bData.filter(b => b.status === "approved").length
@@ -112,7 +116,7 @@ export default function AdvancedDashboardPage() {
         completed: completedCount,
         totalCars: vData.length,
         availableCars: vData.filter(v => v.status === "available").length,
-        totalDrivers: drivers?.length || 0,
+        totalDrivers: driversRes.data?.length || 0,
         totalDistance: realDistance > 0 ? realDistance : 14520 
       })
 
@@ -143,6 +147,7 @@ export default function AdvancedDashboardPage() {
 
     } catch (error) {
       console.error("Error fetching dashboard data:", error)
+      setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ตหรือปิดส่วนขยายเบราว์เซอร์")
     } finally {
       setLoading(false)
     }
@@ -158,7 +163,6 @@ export default function AdvancedDashboardPage() {
   }
 
   return (
-    // ✅ ใช้ Image component แทนการโหลดผ่าน CSS
     <div className="min-h-screen relative font-sarabun text-black bg-slate-900">
       
       <Image 
@@ -176,7 +180,6 @@ export default function AdvancedDashboardPage() {
 
       <div className="p-4 md:p-8 space-y-6 relative z-10 max-w-[1600px] mx-auto">
         
-        {/* ✅ เพิ่มหัวข้อและปุ่มรีเฟรชข้อมูลให้สอดคล้องกับหน้าอื่นๆ */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
@@ -195,6 +198,22 @@ export default function AdvancedDashboardPage() {
             <p className="text-white/90 text-sm mt-1 font-medium drop-shadow-sm">สรุปสถานะการใช้รถยนต์และสถิติต่างๆ แบบเรียลไทม์</p>
           </div>
         </div>
+
+        {/* ✅ แสดง Error Banner ถ้าดึงข้อมูลพัง */}
+        {fetchError && (
+          <div className="bg-rose-500/20 border border-rose-500/50 backdrop-blur-md rounded-2xl p-4 flex items-center gap-4 animate-in fade-in slide-in-from-top-4">
+            <div className="bg-rose-500/30 p-3 rounded-xl shrink-0">
+              <AlertCircle className="size-6 text-rose-300" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-rose-200 font-bold text-lg">พบปัญหาการเชื่อมต่อข้อมูล</h3>
+              <p className="text-rose-300/80 text-sm">{fetchError}</p>
+            </div>
+            <Button onClick={fetchDashboardData} variant="outline" className="bg-white/10 text-white border-white/20 hover:bg-white/20">
+              ลองโหลดใหม่
+            </Button>
+          </div>
+        )}
 
         {/* --- 1. กริตการ์ดสรุปผล 8 ใบ --- */}
         <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-5 gap-4">
@@ -240,92 +259,94 @@ export default function AdvancedDashboardPage() {
         </div>
 
         {/* --- 3. กราฟ 3 ส่วน --- */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <Card className="rounded-[1.5rem] border-none shadow-sm bg-white/95 backdrop-blur-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
-                การกระจายตามสถานะคำขอ <span className="text-[10px] text-slate-400 uppercase">Donut</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[200px] w-full">
-                <ResponsiveContainer width="100%" height="100%">
-                  <PieChart>
-                    <Pie data={donutData} innerRadius={60} outerRadius={85} paddingAngle={2} dataKey="value">
-                      {donutData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.color} />
-                      ))}
-                    </Pie>
-                    <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                  </PieChart>
-                </ResponsiveContainer>
-              </div>
-              <div className="space-y-2 mt-4">
-                {donutData.map((item, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
-                      <div className="size-3 rounded-sm" style={{ backgroundColor: item.color }} />
-                      <span className="text-slate-600 font-medium">{item.name}</span>
+        {!fetchError && (
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <Card className="rounded-[1.5rem] border-none shadow-sm bg-white/95 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
+                  การกระจายตามสถานะคำขอ <span className="text-[10px] text-slate-400 uppercase">Donut</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[200px] w-full">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie data={donutData} innerRadius={60} outerRadius={85} paddingAngle={2} dataKey="value">
+                        {donutData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.color} />
+                        ))}
+                      </Pie>
+                      <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="space-y-2 mt-4">
+                  {donutData.map((item, idx) => (
+                    <div key={idx} className="flex items-center justify-between text-sm">
+                      <div className="flex items-center gap-2">
+                        <div className="size-3 rounded-sm" style={{ backgroundColor: item.color }} />
+                        <span className="text-slate-600 font-medium">{item.name}</span>
+                      </div>
+                      <span className="font-bold">{item.value}</span>
                     </div>
-                    <span className="font-bold">{item.value}</span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
 
-          <Card className="rounded-[1.5rem] border-none shadow-sm bg-white/95 backdrop-blur-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
-                สถานะรถยนต์ <span className="text-[10px] text-slate-400 uppercase">Bar</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[260px] w-full mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={barData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} allowDecimals={false} />
-                    <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={40}>
-                      {barData.map((entry, index) => (
-                        <Cell key={`cell-${index}`} fill={entry.fill} />
-                      ))}
-                    </Bar>
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
+            <Card className="rounded-[1.5rem] border-none shadow-sm bg-white/95 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
+                  สถานะรถยนต์ <span className="text-[10px] text-slate-400 uppercase">Bar</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[260px] w-full mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={barData} margin={{ top: 0, right: 0, left: -20, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="name" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} allowDecimals={false} />
+                      <RechartsTooltip cursor={{ fill: '#f8fafc' }} contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      <Bar dataKey="count" radius={[4, 4, 0, 0]} maxBarSize={40}>
+                        {barData.map((entry, index) => (
+                          <Cell key={`cell-${index}`} fill={entry.fill} />
+                        ))}
+                      </Bar>
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
 
-          <Card className="rounded-[1.5rem] border-none shadow-sm bg-white/95 backdrop-blur-sm">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
-                แนวโน้มคำขอ (ล่าสุด) <span className="text-[10px] text-slate-400 uppercase">Line</span>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="h-[260px] w-full mt-4">
-                <ResponsiveContainer width="100%" height="100%">
-                  <AreaChart data={lineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-                    <defs>
-                      <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
-                        <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
-                      </linearGradient>
-                    </defs>
-                    <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
-                    <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} dy={10} />
-                    <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} allowDecimals={false} />
-                    <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
-                    <Area type="monotone" dataKey="count" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6 }} />
-                  </AreaChart>
-                </ResponsiveContainer>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
+            <Card className="rounded-[1.5rem] border-none shadow-sm bg-white/95 backdrop-blur-sm">
+              <CardHeader className="pb-2">
+                <CardTitle className="text-base font-bold text-slate-800 flex justify-between">
+                  แนวโน้มคำขอ (ล่าสุด) <span className="text-[10px] text-slate-400 uppercase">Line</span>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="h-[260px] w-full mt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={lineData} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+                      <XAxis dataKey="date" axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} dy={10} />
+                      <YAxis axisLine={false} tickLine={false} tick={{ fill: "#64748b", fontSize: 12 }} allowDecimals={false} />
+                      <RechartsTooltip contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)' }} />
+                      <Area type="monotone" dataKey="count" stroke="#10b981" strokeWidth={3} fillOpacity={1} fill="url(#colorCount)" activeDot={{ r: 6 }} />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
         {/* --- 4. ตารางคำขอล่าสุด --- */}
         <Card className="border-none shadow-sm overflow-hidden bg-white/95 backdrop-blur-sm rounded-[2rem]">
@@ -350,6 +371,8 @@ export default function AdvancedDashboardPage() {
               <TableBody>
                 {loading ? (
                   <TableRow><TableCell colSpan={5} className="h-32 text-center text-slate-500"><Loader2 className="animate-spin mx-auto mb-2 size-5" />กำลังโหลดข้อมูลล่าสุด...</TableCell></TableRow>
+                ) : fetchError ? (
+                  <TableRow><TableCell colSpan={5} className="h-32 text-center text-rose-500">ไม่สามารถโหลดข้อมูลตารางได้</TableCell></TableRow>
                 ) : recentBookings.length > 0 ? recentBookings.map((b) => (
                   <TableRow key={b.id} className="hover:bg-slate-50/80 transition-colors border-b border-slate-50">
                     <TableCell className="pl-6 font-mono text-xs text-slate-500">REQ-{b.id.split('-')[0]}</TableCell>

@@ -1,11 +1,11 @@
 "use client"
 
 import { useState, useEffect, useRef } from "react"
-import Image from "next/image" // ✅ 1. นำเข้า Next Image
+import Image from "next/image" 
 import { useAuth } from "@/lib/auth-context" 
-import { cn } from "@/lib/utils" // ✅ นำเข้า cn
+import { cn } from "@/lib/utils" 
 import { 
-  FileText, Printer, Info, Clock, CheckCircle2, Search, X, RefreshCw // ✅ นำเข้า RefreshCw
+  FileText, Printer, Info, Clock, CheckCircle2, Search, X, RefreshCw, AlertCircle // ✅ เพิ่ม AlertCircle
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -90,14 +90,16 @@ export default function HistoryPage() {
   const [historyBookings, setHistoryBookings] = useState([])
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null) // ✅ 1. เพิ่ม State ดักจับ Error
 
   useEffect(() => {
     if (user) loadAllData();
   }, [user])
 
-  // ✅ 2. รวมการดึงข้อมูล Profile, Bookings, Vehicles, Drivers ไว้ใน Promise.all ชุดเดียว
   async function loadAllData() {
+    if (!user) return; // ✅ ป้องกันโหลดข้อมูลตอนที่ user ยังไม่มี
     setIsLoading(true)
+    setFetchError(null) // ✅ เคลียร์ Error ก่อนโหลดใหม่
     try {
       const promises = [
         supabase.from("bookings").select("*").in("status", ["approved", "completed", "started"]).order("created_at", { ascending: false }),
@@ -117,21 +119,28 @@ export default function HistoryPage() {
       const dRes = results[2];
       const profileRes = promises.length > 3 ? results[3] : null;
 
+      // ✅ 2. ดัก Error ถ้าฐานข้อมูลล่มหรือถูกบล็อก
+      if (bRes.error) throw bRes.error;
+      if (vRes.error) throw vRes.error;
+      if (dRes.error) throw dRes.error;
+
       if (profileRes?.data) setUserProfile(profileRes.data);
 
       const bData = bRes.data || [];
       const vData = vRes.data || [];
       const dData = dRes.data || [];
 
-      // ✅ ดึงข้อมูล Logbooks ตาม ID ที่มี
+      // ดึงข้อมูล Logbooks ตาม ID ที่มี
       const bookingIds = bData.map(b => b.id);
       let lData = [];
       if (bookingIds.length > 0) {
-        const { data: logs } = await supabase
+        const { data: logs, error: logsError } = await supabase
           .from("logbooks")
           .select("booking_id, log_date, start_mileage, end_mileage")
           .in("booking_id", bookingIds)
           .order("log_date", { ascending: true }); 
+        
+        if (logsError) throw logsError;
         lData = logs || [];
       }
 
@@ -164,13 +173,14 @@ export default function HistoryPage() {
       setHistoryBookings(enrichedData);
     } catch (err) {
       console.error("❌ Error fetching history:", err);
+      // ✅ 3. เซ็ตค่า Error เพื่อนำไปโชว์ใน UI
+      setFetchError("ไม่สามารถดึงข้อมูลประวัติการอนุมัติได้ โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
     } finally {
       setIsLoading(false)
     }
   }
 
   return (
-    // ✅ 3. ปรับพื้นหลังให้ใช้ Next Image เพื่อลบอาการเรนเดอร์ค้าง
     <div className="font-sarabun text-black min-h-screen relative bg-slate-900">
       
       <Image 
@@ -193,7 +203,6 @@ export default function HistoryPage() {
               <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">
                 สมุดบันทึกและประวัติการใช้รถ
               </h1>
-              {/* ✅ เพิ่มปุ่มรีเฟรชข้อมูล */}
               <Button 
                 variant="outline" 
                 size="icon" 
@@ -228,6 +237,18 @@ export default function HistoryPage() {
             <div className="flex-1 flex flex-col items-center justify-center text-slate-400 py-20">
               <div className="size-8 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-4"></div>
               <p className="font-bold">กำลังโหลดข้อมูลประวัติ...</p>
+            </div>
+          ) : fetchError ? (
+            // ✅ 4. เพิ่ม UI แสดงผลกรณีโหลดข้อมูลพัง
+            <div className="flex-1 flex flex-col items-center justify-center text-rose-500 py-20 bg-rose-50/50">
+              <div className="p-5 rounded-full bg-rose-100 mb-4 text-rose-400">
+                <AlertCircle className="size-12 animate-bounce" />
+              </div>
+              <p className="font-bold text-lg mb-2">พบปัญหาการเชื่อมต่อ</p>
+              <p className="text-sm text-rose-400 mb-6">{fetchError}</p>
+              <Button onClick={loadAllData} variant="outline" className="border-rose-200 text-rose-600 hover:bg-rose-100 font-bold px-6">
+                <RefreshCw className="size-4 mr-2" /> ลองโหลดใหม่อีกครั้ง
+              </Button>
             </div>
           ) : historyBookings.length === 0 ? (
             <div className="flex-1 flex flex-col items-center justify-center text-slate-400 py-20">

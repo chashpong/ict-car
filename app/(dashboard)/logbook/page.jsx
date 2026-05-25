@@ -87,7 +87,7 @@ function FileUploadButton({ label, onUpload, url, icon = <Camera className="size
   )
 }
 
-function DriverTodayJobs({ bookings, startTrip, isLoading, onRefresh }) {
+function DriverTodayJobs({ bookings, startTrip, isLoading, onRefresh, fetchError }) {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* ── Section Header ── */}
@@ -110,11 +110,21 @@ function DriverTodayJobs({ bookings, startTrip, isLoading, onRefresh }) {
         </Button>
       </div>
 
-      {/* ── Loading / Empty / List ── */}
+      {/* ── Loading / Error / Empty / List ── */}
       {isLoading ? (
         <Card className="border border-white/10 bg-white/10 backdrop-blur-sm rounded-2xl h-56 flex flex-col items-center justify-center text-white/70">
           <Loader2 className="size-7 animate-spin text-blue-400 mb-3" />
           <p className="font-semibold text-sm">กำลังโหลดงาน...</p>
+        </Card>
+      ) : fetchError ? (
+        // ✅ เพิ่ม UI กรณีโหลดข้อมูลพัง (กันหน้าขาว/หมุนค้าง)
+        <Card className="border border-rose-400/30 bg-rose-500/20 backdrop-blur-sm rounded-2xl h-64 flex flex-col items-center justify-center text-white p-6 text-center">
+          <AlertCircle className="size-10 text-rose-300 mb-3 animate-bounce" />
+          <p className="font-bold text-lg mb-2">พบปัญหาการเชื่อมต่อ</p>
+          <p className="text-sm text-white/70 max-w-sm mb-5">{fetchError}</p>
+          <Button variant="outline" onClick={onRefresh} className="border-rose-400/50 text-rose-100 hover:bg-rose-500 hover:text-white bg-white/5 rounded-xl font-bold">
+            <RefreshCw className="size-4 mr-2" /> ลองโหลดใหม่อีกครั้ง
+          </Button>
         </Card>
       ) : bookings.length === 0 ? (
         <Card className="border border-white/10 bg-white/10 backdrop-blur-sm rounded-2xl">
@@ -214,37 +224,45 @@ function TripRecordForm({ booking, user, userProfile }) {
   useEffect(() => {
     async function loadLogs() {
       if (!booking) return
-      const { data: savedLogs } = await supabase
-        .from("logbooks")
-        .select("*")
-        .eq("booking_id", booking.id)
-        .order("log_date", { ascending: true })
+      // ✅ เพิ่ม Try-Catch ป้องกันแอปค้างตอนดึงประวัติ
+      try {
+        const { data: savedLogs, error } = await supabase
+          .from("logbooks")
+          .select("*")
+          .eq("booking_id", booking.id)
+          .order("log_date", { ascending: true })
+          
+        if (error) throw error;
 
-      const start = new Date(booking.start_date)
-      const end = booking.end_date ? new Date(booking.end_date) : new Date(booking.start_date)
-      let current = new Date(start)
-      let temp = []
-      let dayIndex = 0
+        const start = new Date(booking.start_date)
+        const end = booking.end_date ? new Date(booking.end_date) : new Date(booking.start_date)
+        let current = new Date(start)
+        let temp = []
+        let dayIndex = 0
 
-      while (current <= end) {
-        const dateStr = current.toISOString().slice(0, 10)
-        const existing = savedLogs?.find(l => l.log_date === dateStr)
-        temp.push(existing ? { ...existing, date: dateStr } : {
-          booking_id: booking.id,
-          vehicle_id: booking.vehicle_id,
-          driver_id: booking.driver_id,
-          date: dateStr, 
-          start_mileage: dayIndex === 0 ? (booking.vehicles?.last_mileage || "") : "",
-          end_mileage: "",
-          fuel_liter: "", fuel_cost: "",
-          note: "", status: "normal",
-          mileage_start_image: null, mileage_end_image: null, receipt_image: null
-        })
-        current.setDate(current.getDate() + 1)
-        dayIndex++
+        while (current <= end) {
+          const dateStr = current.toISOString().slice(0, 10)
+          const existing = savedLogs?.find(l => l.log_date === dateStr)
+          temp.push(existing ? { ...existing, date: dateStr } : {
+            booking_id: booking.id,
+            vehicle_id: booking.vehicle_id,
+            driver_id: booking.driver_id,
+            date: dateStr, 
+            start_mileage: dayIndex === 0 ? (booking.vehicles?.last_mileage || "") : "",
+            end_mileage: "",
+            fuel_liter: "", fuel_cost: "",
+            note: "", status: "normal",
+            mileage_start_image: null, mileage_end_image: null, receipt_image: null
+          })
+          current.setDate(current.getDate() + 1)
+          dayIndex++
+        }
+        setDays(temp)
+        setIsStarted(true)
+      } catch (error) {
+        console.error("Load Logs Error:", error)
+        Swal.fire({ icon: 'error', title: 'ดึงข้อมูลไม่สำเร็จ', text: 'ไม่สามารถโหลดประวัติการใช้งานได้ โปรดลองอีกครั้ง' })
       }
-      setDays(temp)
-      setIsStarted(true)
     }
     loadLogs()
   }, [booking])
@@ -658,22 +676,39 @@ export default function LogbookPage() {
   const { user } = useAuth()
   const [userProfile, setUserProfile] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
+  const [fetchError, setFetchError] = useState(null) // ✅ 1. เพิ่ม State ดักจับ Error
 
   useEffect(() => {
-    if (user) loadAllData()
+    loadAllData()
   }, [user])
 
   async function loadAllData() {
+    if (!user) {
+      setIsLoading(false)
+      return
+    }
+
     setIsLoading(true)
+    setFetchError(null) // เคลียร์ Error ก่อนเริ่มโหลด
+
     try {
-      const { data: profile } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      // ✅ เพิ่มการดัก Error ให้ครอบคลุมทุกจุดเชื่อมต่อ
+      const { data: profile, error: profileErr } = await supabase.from('profiles').select('*').eq('id', user.id).single()
+      if (profileErr && profileErr.code !== 'PGRST116') throw profileErr 
       if (profile) setUserProfile(profile)
 
       let myDriverId = null
       if (user.role === "driver") {
-        const { data: driverData } = await supabase.from("drivers").select("id").eq("user_id", user.id).single()
-        if (driverData) { myDriverId = driverData.id }
-        else { setBookings([]); return }
+        const { data: driverData, error: driverErr } = await supabase.from("drivers").select("id").eq("user_id", user.id).single()
+        if (driverErr && driverErr.code !== 'PGRST116') throw driverErr
+        
+        if (driverData) { 
+          myDriverId = driverData.id 
+        } else { 
+          setBookings([])
+          setIsLoading(false)
+          return 
+        }
       }
 
       let query = supabase
@@ -686,11 +721,14 @@ export default function LogbookPage() {
 
       const { data, error } = await query
       if (error) throw error
+      
       setBookings(data || [])
     } catch (error) {
-      Swal.fire({ icon: 'error', title: 'ไม่สามารถดึงข้อมูลได้', text: `รายละเอียด: ${error.message}` })
+      console.error("Load Logbook Error:", error)
+      // ✅ 2. แสดง UI Error แทน Swal เพื่อไม่ให้รบกวนหน้าจอ
+      setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ต หรือปิดส่วนขยายบล็อกโฆษณา (AdBlock)")
     } finally {
-      setIsLoading(false)
+      setIsLoading(false) // ✅ ปิดหมุนเสมอ
     }
   }
 
@@ -748,6 +786,7 @@ export default function LogbookPage() {
               startTrip={startTrip}
               isLoading={isLoading}
               onRefresh={loadAllData}
+              fetchError={fetchError} // ✅ ส่งค่า Error เข้าไปให้ Component ลูก
             />
           </TabsContent>
 
