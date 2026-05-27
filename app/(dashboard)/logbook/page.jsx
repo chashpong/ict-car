@@ -139,11 +139,11 @@ function FuelPopupForm({ d, index, uploadingField, onUploadImage, onSaveFuel }) 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-500">ปริมาณ (ลิตร)</Label>
-              <Input type="number" placeholder="เช่น 40.5" value={fuelLiter} onChange={e => setFuelLiter(e.target.value)} className="h-11 rounded-xl bg-slate-50" />
+              <Input type="number" placeholder="กรอกข้อมูล" value={fuelLiter} onChange={e => setFuelLiter(e.target.value)} className="h-11 rounded-xl bg-slate-50" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-xs font-bold text-slate-500">ยอดชำระ (บาท)</Label>
-              <Input type="number" placeholder="เช่น 1200" value={fuelCost} onChange={e => setFuelCost(e.target.value)} className="h-11 rounded-xl bg-slate-50 font-bold text-amber-600" />
+              <Input type="number" placeholder="กรอกข้อมูลจำนวน" value={fuelCost} onChange={e => setFuelCost(e.target.value)} className="h-11 rounded-xl bg-slate-50 font-bold text-amber-600" />
             </div>
           </div>
           
@@ -629,7 +629,7 @@ function TripRecordForm({ booking, user, userProfile }) {
                             <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">กรอกตัวเลขหลังจอดรถเสร็จสิ้น</Label>
                             <Input
                               type="number"
-                              placeholder="เช่น 12550"
+                              placeholder="กรอกเลขไมล์หลังเดินทาง"
                               className="h-11 text-base font-bold font-mono bg-white border-rose-200 rounded-xl px-4 focus-visible:ring-rose-400 text-black"
                               value={d.end_mileage ?? ""}
                               onChange={(e) => {
@@ -665,7 +665,7 @@ function TripRecordForm({ booking, user, userProfile }) {
                         <div>
                           <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">รายละเอียดสาเหตุ</Label>
                           <Input
-                            placeholder="เช่น ยางแตก, หม้อน้ำมีปัญหา..."
+                            placeholder="เช่น ยางแตก, หม้อน้ำมีปัญหา...อื่นๆ"
                             value={d.note ?? ""}
                             onChange={(e) => {
                               const newDays = [...days]
