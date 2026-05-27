@@ -109,6 +109,7 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
 }
 
 // --- 3. ฟอร์มการจอง (BookingForm) ---
+// --- 3. ฟอร์มการจอง (BookingForm) ---
 function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) { 
   const [formData, setFormData] = useState({
     user_name: "", position: "", department: "", 
@@ -117,6 +118,9 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
     destination: "", origin: "หน่วยงานต้นสังกัด", purpose: "", duty_details: "", 
     passengers: 1, vehicle_id: "", vehicle_type_preference: "ไม่ระบุ", contact_phone: "" 
   })
+  
+  // ✅ เพิ่ม State เพื่อป้องกันการคลิกเบิ้ล
+  const [isSaving, setIsSaving] = useState(false)
 
   const getVehicleStatus = (car) => {
     if (car.status !== 'available') return { status: 'busy', reason: car.status === 'maintenance' ? 'อยู่ระหว่างซ่อมบำรุง' : 'กำลังปฏิบัติงาน' };
@@ -129,6 +133,16 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
       return isBefore(startReq, bEnd) && isBefore(bStart, endReq);
     });
     return conflict ? { status: 'busy', reason: 'ชนเวลาจอง' } : { status: 'available' };
+  }
+
+  // ✅ ฟังก์ชันครอบตอนกดปุ่ม Save
+  const handleSave = async () => {
+    setIsSaving(true) // ล็อกปุ่มไว้
+    try {
+      await onSave(formData)
+    } finally {
+      setIsSaving(false) // คลายล็อกหลังจบงาน (ไม่ว่าจะสำเร็จหรือล้มเหลว)
+    }
   }
 
   return (
@@ -219,7 +233,7 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
             <div className="space-y-3">
               <div className="flex items-center justify-between">
                 <Label className="font-bold flex items-center gap-2 text-slate-700">
-                  <Car className="size-4 text-blue-600" /> ตรวจสถานะรถที่ว่าง
+                  <Car className="size-4 text-blue-600" /> เลือกรถที่ต้องการจอง
                 </Label>
                 <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-100 font-bold text-[10px]">
                   รถทั้งหมด {vehicles.length} คัน
@@ -263,13 +277,17 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
       </div>
       
       <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-4 border-t border-slate-100 mt-2 shrink-0">
-        <Button variant="ghost" onClick={onClose} className="w-full sm:w-auto px-10 h-12 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">ยกเลิก</Button>
+        <Button variant="ghost" onClick={onClose} disabled={isSaving} className="w-full sm:w-auto px-10 h-12 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">ยกเลิก</Button>
         <Button 
-          onClick={() => onSave(formData)} 
-          disabled={!formData.vehicle_id || !formData.purpose || !formData.contact_phone}
-          className="w-full sm:w-auto bg-[#0f172a] hover:bg-slate-800 px-12 h-12 rounded-2xl font-bold text-white shadow-lg transition-all hover:scale-[1.02]"
+          onClick={handleSave} 
+          disabled={!formData.vehicle_id || !formData.purpose || !formData.contact_phone || isSaving}
+          className="w-full sm:w-auto bg-[#0f172a] hover:bg-slate-800 px-12 h-12 rounded-2xl font-bold text-white shadow-lg transition-all hover:scale-[1.02] disabled:opacity-70 disabled:cursor-not-allowed"
         >
-          ส่งคำขอจองรถยนต์
+          {isSaving ? (
+            <><Loader2 className="mr-2 size-5 animate-spin" /> กำลังส่งคำขอ...</>
+          ) : (
+            "ส่งคำขอจองรถยนต์"
+          )}
         </Button>
       </div>
     </div>
