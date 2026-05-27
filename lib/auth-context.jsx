@@ -163,12 +163,10 @@ export function useAuth() {
  * ✅ แก้ไขส่วนการเข้าถึงเมนู (Access Control)
  */
 const ROLE_MENU_ACCESS = {
-  // ✅ เพิ่ม /audit-logs เข้าไปเผื่อไว้ด้วย ป้องกันการเข้าถึงไม่ได้
-  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs", "/audit-logs"],
-  
-  approver: ["/bookings", "/approvals", "/history", "/reports"],
-  driver: ["/logbook"],
-  user: ["/bookings"],
+  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs", "/audit-logs", "/calendar", "/driving-history"],
+  approver: ["/bookings", "/approvals", "/history", "/reports", "/calendar"],
+  driver: ["/logbook", "/calendar", "/driving-history"],
+  user: ["/bookings", "/calendar"],
 }
 
 export function canAccessRoute(role, route) {

@@ -7,7 +7,7 @@ import {
   Search, FileImage, MapPin, Camera, Play, 
   Square, CheckCircle2, AlertCircle, Loader2,
   Calendar as CalendarIcon, Clock, Fuel, Save, ChevronRight, Navigation,
-  Car, UserCheck, RefreshCw, Lock
+  Car, UserCheck, RefreshCw, Lock, Receipt, Eye, Plus
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -24,6 +24,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Label } from "@/components/ui/label"
 import { Separator } from "@/components/ui/separator"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 import { cn } from "@/lib/utils" 
 
 import { supabase } from "@/lib/supabase"
@@ -87,6 +95,86 @@ function FileUploadButton({ label, onUpload, url, icon = <Camera className="size
   )
 }
 
+// ✅ Popup ย่อยสำหรับกรอกน้ำมันแยกต่างหาก
+function FuelPopupForm({ d, index, uploadingField, onUploadImage, onSaveFuel }) {
+  const [isOpen, setIsOpen] = useState(false)
+  const [fuelLiter, setFuelLiter] = useState("")
+  const [fuelCost, setFuelCost] = useState("")
+  const [receiptUrl, setReceiptUrl] = useState(null)
+  const [isSaving, setIsSaving] = useState(false)
+
+  const handleSave = async () => {
+    if (!fuelLiter || !fuelCost || !receiptUrl) {
+      Swal.fire({ icon: 'warning', title: 'กรอกข้อมูลไม่ครบ', text: 'กรุณากรอกลิตร, ราคา และอัปโหลดใบเสร็จให้ครบถ้วน' })
+      return
+    }
+    setIsSaving(true)
+    await onSaveFuel(index, fuelLiter, fuelCost, receiptUrl)
+    setIsSaving(false)
+    setIsOpen(false)
+    setFuelLiter("")
+    setFuelCost("")
+    setReceiptUrl(null)
+    Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', text: 'บันทึกข้อมูลการเติมน้ำมันลงระบบเรียบร้อย', timer: 1500, showConfirmButton: false })
+  }
+
+  return (
+    <Dialog open={isOpen} onOpenChange={setIsOpen}>
+      <DialogTrigger asChild>
+        <Button variant="outline" className="w-full bg-amber-50 hover:bg-amber-100 text-amber-700 border-amber-200 font-bold h-11 rounded-xl border-dashed">
+          <Plus className="mr-1.5 size-4" /> แวะปั๊ม / บันทึกเติมน้ำมัน
+        </Button>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-md rounded-2xl p-0 overflow-hidden border-none font-sarabun bg-white text-black">
+        <DialogHeader className="bg-gradient-to-r from-amber-500 to-orange-500 p-5 text-white">
+          <DialogTitle className="text-xl font-extrabold flex items-center gap-2">
+            <Fuel className="size-5" /> บันทึกการเติมน้ำมัน
+          </DialogTitle>
+          <DialogDescription className="text-white/80 font-medium">
+            อัปโหลดใบเสร็จระหว่างทางได้ทันที
+          </DialogDescription>
+        </DialogHeader>
+        
+        <div className="p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-500">ปริมาณ (ลิตร)</Label>
+              <Input type="number" placeholder="เช่น 40.5" value={fuelLiter} onChange={e => setFuelLiter(e.target.value)} className="h-11 rounded-xl bg-slate-50" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-xs font-bold text-slate-500">ยอดชำระ (บาท)</Label>
+              <Input type="number" placeholder="เช่น 1200" value={fuelCost} onChange={e => setFuelCost(e.target.value)} className="h-11 rounded-xl bg-slate-50 font-bold text-amber-600" />
+            </div>
+          </div>
+          
+          <div className="space-y-1.5">
+            <Label className="text-xs font-bold text-slate-500">ใบเสร็จน้ำมัน (บังคับ)</Label>
+            <FileUploadButton
+              label="ถ่ายรูปใบเสร็จ"
+              icon={<Receipt className="size-4" />}
+              loading={uploadingField === `receipt-${index}`}
+              url={receiptUrl}
+              onUpload={async (file) => {
+                const url = await onUploadImage(file, `receipt-${index}`)
+                if (url) setReceiptUrl(url)
+              }}
+            />
+          </div>
+
+          <Button 
+            className="w-full h-11 rounded-xl font-bold bg-amber-500 hover:bg-amber-600 text-white mt-2"
+            onClick={handleSave}
+            disabled={isSaving}
+          >
+            {isSaving ? <Loader2 className="size-5 animate-spin mr-2" /> : <Save className="size-4 mr-2" />} 
+            บันทึกส่งเข้าส่วนกลาง
+          </Button>
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
 function DriverTodayJobs({ bookings, startTrip, isLoading, onRefresh, fetchError }) {
   return (
     <div className="flex flex-col gap-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
@@ -117,7 +205,6 @@ function DriverTodayJobs({ bookings, startTrip, isLoading, onRefresh, fetchError
           <p className="font-semibold text-sm">กำลังโหลดงาน...</p>
         </Card>
       ) : fetchError ? (
-        // ✅ เพิ่ม UI กรณีโหลดข้อมูลพัง (กันหน้าขาว/หมุนค้าง)
         <Card className="border border-rose-400/30 bg-rose-500/20 backdrop-blur-sm rounded-2xl h-64 flex flex-col items-center justify-center text-white p-6 text-center">
           <AlertCircle className="size-10 text-rose-300 mb-3 animate-bounce" />
           <p className="font-bold text-lg mb-2">พบปัญหาการเชื่อมต่อ</p>
@@ -217,6 +304,7 @@ function DriverTodayJobs({ bookings, startTrip, isLoading, onRefresh, fetchError
 function TripRecordForm({ booking, user, userProfile }) { 
   const [isStarted, setIsStarted] = useState(false)
   const [days, setDays] = useState([])
+  const [fuelRecords, setFuelRecords] = useState([]) // ✅ State ใหม่สำหรับเก็บรายการน้ำมันแบบ List
   const [loading, setLoading] = useState(false)
   const [uploadingField, setUploadingField] = useState(null)
   const [savingIndex, setSavingIndex] = useState(null) 
@@ -224,15 +312,18 @@ function TripRecordForm({ booking, user, userProfile }) {
   useEffect(() => {
     async function loadLogs() {
       if (!booking) return
-      // ✅ เพิ่ม Try-Catch ป้องกันแอปค้างตอนดึงประวัติ
       try {
-        const { data: savedLogs, error } = await supabase
-          .from("logbooks")
-          .select("*")
-          .eq("booking_id", booking.id)
-          .order("log_date", { ascending: true })
-          
-        if (error) throw error;
+        // ✅ โหลดข้อมูลจาก 2 ตาราง (logbooks และ fuel_expenses) พร้อมกัน โดยไม่กระทบลอจิกเดิม
+        const [logsRes, fuelRes] = await Promise.all([
+          supabase.from("logbooks").select("*").eq("booking_id", booking.id).order("log_date", { ascending: true }),
+          supabase.from("fuel_expenses").select("*").eq("booking_id", booking.id).order("created_at", { ascending: true })
+        ])
+
+        if (logsRes.error) throw logsRes.error;
+        if (fuelRes.error) throw fuelRes.error;
+
+        setFuelRecords(fuelRes.data || []) // เก็บ List น้ำมันลง State
+        const savedLogs = logsRes.data
 
         const start = new Date(booking.start_date)
         const end = booking.end_date ? new Date(booking.end_date) : new Date(booking.start_date)
@@ -282,6 +373,27 @@ function TripRecordForm({ booking, user, userProfile }) {
     return data.publicUrl
   }
 
+  // ✅ ฟังก์ชันแยกรักษาค่าน้ำมันโดยเฉพาะ (บันทึกลงตาราง fuel_expenses ทันที)
+ 
+  async function saveFuelDataOnly(index, liter, cost, url) {
+    const d = days[index]
+    const payload = {
+      booking_id: booking.id,
+      driver_id: booking.driver_id, // ตรวจสอบว่า booking.driver_id คือ ID ของตาราง drivers
+      log_date: d.date,
+      fuel_liter: Number(liter), 
+      fuel_cost: Number(cost), 
+      receipt_image: url
+    }
+    
+    // บันทึกลงตาราง fuel_expenses
+    const { data, error } = await supabase.from("fuel_expenses").insert([payload]).select().single()
+    if (error) throw error
+
+    // อัปเดต List บนหน้าจอ
+    setFuelRecords([...fuelRecords, data])
+  }
+
   async function saveDay(index) {
     const d = days[index]
     if (d.status !== "breakdown") {
@@ -308,12 +420,10 @@ function TripRecordForm({ booking, user, userProfile }) {
       mileage_end_image: d.status === "breakdown" ? null : d.mileage_end_image,
       receipt_image: d.receipt_image
     }
-    const { data: oldLog } = await supabase.from("logbooks").select("*").eq('booking_id', booking.id).eq('log_date', d.date).single()
+    
     const { data: newLog, error } = await supabase.from("logbooks").upsert(payload, { onConflict: 'booking_id, log_date' }).select().single()
     if (error) { Swal.fire('ข้อผิดพลาด', error.message, 'error'); setSavingIndex(null); return }
-    if (user && newLog) {
-      await supabase.from('audit_logs').insert([{ user_id: user.id, user_name: userProfile?.full_name || user.email, action: 'UPDATE', entity_type: 'logbooks', entity_id: String(newLog.id), old_data: oldLog || null, new_data: newLog }])
-    }
+    
     if (d.status === "breakdown") {
       await supabase.from("vehicles").update({ status: "maintenance" }).eq("id", booking.vehicle_id)
       await supabase.from("maintenance").insert([{ vehicle_id: booking.vehicle_id, vehicle_plate: booking.vehicles?.license_plate || "ไม่ทราบทะเบียน", type: "แจ้งรถเสีย", date: d.date, description: d.note || "แจ้งรถเสียระหว่างปฏิบัติงาน", cost: 0 }])
@@ -340,14 +450,6 @@ function TripRecordForm({ booking, user, userProfile }) {
           Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: `กรุณาแนบรูปไมล์วันที่ ${formatThaiDate(d.date)}`, confirmButtonColor: '#0f172a' })
           return false
         }
-      }
-      if (Number(d.fuel_cost) > 0 && !d.receipt_image) {
-        Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: `กรุณาแนบรูปใบเสร็จวันที่ ${formatThaiDate(d.date)}`, confirmButtonColor: '#0f172a' })
-        return false
-      }
-      if (d.status === "breakdown" && !d.note) {
-        Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: `กรุณาระบุหมายเหตุวันที่แจ้งรถเสีย (${formatThaiDate(d.date)})`, confirmButtonColor: '#0f172a' })
-        return false
       }
     }
     return true
@@ -376,9 +478,7 @@ function TripRecordForm({ booking, user, userProfile }) {
     await supabase.from("vehicles").update({ last_mileage: finalMileage, status: hasBreakdown ? "maintenance" : "available" }).eq("id", booking.vehicle_id)
     await supabase.from("drivers").update({ status: "available" }).eq("id", booking.driver_id)
     await supabase.from("bookings").update({ status: "completed" }).eq("id", booking.id)
-    if (user) {
-      await supabase.from('audit_logs').insert([{ user_id: user.id, user_name: userProfile?.full_name || user.email, action: 'UPDATE', entity_type: 'bookings', entity_id: String(booking.id), old_data: { status: 'started' }, new_data: { status: 'completed' } }])
-    }
+    
     Swal.fire({ title: 'สำเร็จ', text: 'ส่งรายงานและสิ้นสุดการเดินทางเรียบร้อยแล้ว', icon: 'success', confirmButtonColor: '#0ea5e9' }).then(() => window.location.reload())
   }
 
@@ -422,230 +522,226 @@ function TripRecordForm({ booking, user, userProfile }) {
 
       {/* ── Day Timeline ── */}
       <div className="flex flex-col gap-5">
-        {isStarted && days.map((d, index) => (
-          <div key={index} className="flex gap-4">
-            
-            {/* Timeline indicator */}
-            <div className="flex flex-col items-center gap-0 shrink-0">
-              <div className="size-12 rounded-2xl bg-blue-600 shadow-md flex items-center justify-center text-white font-bold text-sm shrink-0">
-                D{index + 1}
-              </div>
-              {index < days.length - 1 && (
-                <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-2 rounded-full" />
-              )}
-            </div>
+        {isStarted && days.map((d, index) => {
+          // ✅ ดึงข้อมูลน้ำมันของ "วันนี้" ออกมาแสดง
+          const todayFuelRecords = fuelRecords.filter(f => f.log_date === d.date)
 
-            {/* Day Card */}
-            <div className="flex-1 min-w-0 pb-2">
-              {/* Day Header */}
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
-                <h4 className="text-lg font-extrabold text-white flex items-center gap-2">
-                  วันที่ {index + 1}:
-                  <span className="text-blue-400 bg-white/10 px-3 py-1 rounded-xl text-base border border-white/10">
-                    {formatThaiDate(d.date)}
-                  </span>
-                </h4>
-                {/* Status Selector */}
-                <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-white/10 self-start">
-                  <span className="text-[11px] font-bold text-white/60 uppercase tracking-wider whitespace-nowrap">สภาพรถ:</span>
-                  <Select
-                    value={d.status}
-                    onValueChange={(val) => {
-                      const newDays = [...days]
-                      newDays[index].status = val
-                      if (val === "breakdown") {
-                        newDays[index].start_mileage = ""
-                        newDays[index].end_mileage = ""
-                        newDays[index].mileage_start_image = null
-                        newDays[index].mileage_end_image = null
-                      }
-                      setDays(newDays)
-                    }}
-                  >
-                    <SelectTrigger className="w-auto min-w-[160px] h-8 border-none bg-white/10 text-white rounded-lg font-bold focus:ring-0 text-sm">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="font-sarabun rounded-xl border-slate-200 bg-white">
-                      <SelectItem value="normal" className="font-bold text-slate-700">ปกติพร้อมใช้งาน</SelectItem>
-                      <SelectItem value="breakdown" className="font-bold text-rose-600 focus:text-rose-700 focus:bg-rose-50">แจ้งรถเสีย</SelectItem>
-                    </SelectContent>
-                  </Select>
+          return (
+            <div key={index} className="flex gap-4">
+              
+              {/* Timeline indicator */}
+              <div className="flex flex-col items-center gap-0 shrink-0">
+                <div className="size-12 rounded-2xl bg-blue-600 shadow-md flex items-center justify-center text-white font-bold text-sm shrink-0">
+                  D{index + 1}
                 </div>
+                {index < days.length - 1 && (
+                  <div className="w-0.5 flex-1 min-h-6 bg-slate-200 mt-2 rounded-full" />
+                )}
               </div>
 
-              {/* Day Content Card */}
-              <Card className={cn(
-                "border rounded-2xl shadow-sm overflow-hidden transition-all duration-200",
-                d.status === 'breakdown' ? "bg-white/90 border-rose-100" : "bg-white/95 border-white/20"
-              )}>
-                <CardContent className="p-5 space-y-5">
-                  
-                  {/* ── Mileage Section ── */}
-                  {d.status === "normal" ? (
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                      {/* ขาไป */}
-                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3">
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 text-sm font-bold text-blue-600">
-                            <Play className="size-3.5 fill-current" /> ไมล์เริ่ม (ขาไป)
-                          </div>
-                          <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-lg">
-                            <Lock className="size-3"/> อัตโนมัติ
-                          </span>
-                        </div>
-                        <div>
-                          <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">เลขไมล์ก่อนเดินทาง</Label>
-                          <Input
-                            type="number"
-                            placeholder="รอดึงข้อมูล..."
-                            className="h-11 text-base font-bold font-mono bg-slate-100 border-slate-200 rounded-xl px-4 text-slate-400 cursor-not-allowed"
-                            value={d.start_mileage ?? ""}
-                            readOnly
-                          />
-                        </div>
-                        <FileUploadButton
-                          label="ถ่ายรูปหน้าปัด (ขาไป)"
-                          loading={uploadingField === `start-${index}`}
-                          onUpload={async (file) => {
-                            const url = await uploadImage(file, `start-${index}`)
-                            const newDays = [...days]
-                            newDays[index].mileage_start_image = url
-                            setDays(newDays)
-                          }}
-                          url={d.mileage_start_image}
-                        />
-                      </div>
+              {/* Day Card */}
+              <div className="flex-1 min-w-0 pb-2">
+                {/* Day Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
+                  <h4 className="text-lg font-extrabold text-white flex items-center gap-2">
+                    วันที่ {index + 1}:
+                    <span className="text-blue-400 bg-white/10 px-3 py-1 rounded-xl text-base border border-white/10">
+                      {formatThaiDate(d.date)}
+                    </span>
+                  </h4>
+                  {/* Status Selector */}
+                  <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm px-3 py-1.5 rounded-xl border border-white/10 self-start">
+                    <span className="text-[11px] font-bold text-white/60 uppercase tracking-wider whitespace-nowrap">สภาพรถ:</span>
+                    <Select
+                      value={d.status}
+                      onValueChange={(val) => {
+                        const newDays = [...days]
+                        newDays[index].status = val
+                        if (val === "breakdown") {
+                          newDays[index].start_mileage = ""
+                          newDays[index].end_mileage = ""
+                          newDays[index].mileage_start_image = null
+                          newDays[index].mileage_end_image = null
+                        }
+                        setDays(newDays)
+                      }}
+                    >
+                      <SelectTrigger className="w-auto min-w-[160px] h-8 border-none bg-white/10 text-white rounded-lg font-bold focus:ring-0 text-sm">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="font-sarabun rounded-xl border-slate-200 bg-white">
+                        <SelectItem value="normal" className="font-bold text-slate-700">ปกติพร้อมใช้งาน</SelectItem>
+                        <SelectItem value="breakdown" className="font-bold text-rose-600 focus:text-rose-700 focus:bg-rose-50">แจ้งรถเสีย</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-                      {/* ขากลับ */}
-                      <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3">
-                        <div className="flex items-center gap-2 text-sm font-bold text-rose-600">
-                          <Square className="size-3.5 fill-current" /> ไมล์จบ (ขากลับ)
-                        </div>
-                        <div>
-                          <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">กรอกตัวเลขหลังจอดรถเสร็จสิ้น</Label>
-                          <Input
-                            type="number"
-                            placeholder="เช่น 12550"
-                            className="h-11 text-base font-bold font-mono bg-white border-rose-200 rounded-xl px-4 focus-visible:ring-rose-400 text-black"
-                            value={d.end_mileage ?? ""}
-                            onChange={(e) => {
-                              const val = e.target.value
+                {/* Day Content Card */}
+                <Card className={cn(
+                  "border rounded-2xl shadow-sm overflow-hidden transition-all duration-200",
+                  d.status === 'breakdown' ? "bg-white/90 border-rose-100" : "bg-white/95 border-white/20"
+                )}>
+                  <CardContent className="p-5 space-y-5">
+                    
+                    {/* ── Mileage Section ── */}
+                    {d.status === "normal" ? (
+                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                        {/* ขาไป */}
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2 text-sm font-bold text-blue-600">
+                              <Play className="size-3.5 fill-current" /> ไมล์เริ่ม (ขาไป)
+                            </div>
+                            <span className="text-[10px] font-bold text-slate-400 flex items-center gap-1 bg-slate-100 px-2 py-0.5 rounded-lg">
+                              <Lock className="size-3"/> อัตโนมัติ
+                            </span>
+                          </div>
+                          <div>
+                            <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">เลขไมล์ก่อนเดินทาง</Label>
+                            <Input
+                              type="number"
+                              placeholder="รอดึงข้อมูล..."
+                              className="h-11 text-base font-bold font-mono bg-slate-100 border-slate-200 rounded-xl px-4 text-slate-400 cursor-not-allowed"
+                              value={d.start_mileage ?? ""}
+                              readOnly
+                            />
+                          </div>
+                          <FileUploadButton
+                            label="ถ่ายรูปหน้าปัด (ขาไป)"
+                            loading={uploadingField === `start-${index}`}
+                            onUpload={async (file) => {
+                              const url = await uploadImage(file, `start-${index}`)
                               const newDays = [...days]
-                              newDays[index].end_mileage = val
-                              if (newDays[index + 1] && newDays[index].status !== "breakdown") {
-                                newDays[index + 1].start_mileage = val
-                              }
+                              newDays[index].mileage_start_image = url
                               setDays(newDays)
                             }}
+                            url={d.mileage_start_image}
                           />
                         </div>
-                        <FileUploadButton
-                          label="ถ่ายรูปหน้าปัด (ขากลับ)"
-                          loading={uploadingField === `end-${index}`}
-                          onUpload={async (file) => {
-                            const url = await uploadImage(file, `end-${index}`)
-                            const newDays = [...days]
-                            newDays[index].mileage_end_image = url
-                            setDays(newDays)
-                          }}
-                          url={d.mileage_end_image}
-                        />
-                      </div>
-                    </div>
-                  ) : (
-                    /* ── Breakdown Section ── */
-                    <div className="bg-rose-50 p-4 rounded-xl border border-rose-100 space-y-3">
-                      <div className="flex items-center gap-2 text-rose-600 font-bold">
-                        <AlertCircle className="size-5" /> แจ้งเหตุรถเสีย / ขัดข้อง
-                      </div>
-                      <div>
-                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">รายละเอียดสาเหตุ</Label>
-                        <Input
-                          placeholder="เช่น ยางแตก, หม้อน้ำมีปัญหา..."
-                          value={d.note ?? ""}
-                          onChange={(e) => {
-                            const newDays = [...days]
-                            newDays[index].note = e.target.value
-                            setDays(newDays)
-                          }}
-                          className="h-11 bg-white rounded-xl border-rose-200 focus-visible:ring-rose-400 text-black"
-                        />
-                      </div>
-                    </div>
-                  )}
 
-                  <Separator className="bg-slate-100" />
+                        {/* ขากลับ */}
+                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col gap-3">
+                          <div className="flex items-center gap-2 text-sm font-bold text-rose-600">
+                            <Square className="size-3.5 fill-current" /> ไมล์จบ (ขากลับ)
+                          </div>
+                          <div>
+                            <Label className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-1 block">กรอกตัวเลขหลังจอดรถเสร็จสิ้น</Label>
+                            <Input
+                              type="number"
+                              placeholder="เช่น 12550"
+                              className="h-11 text-base font-bold font-mono bg-white border-rose-200 rounded-xl px-4 focus-visible:ring-rose-400 text-black"
+                              value={d.end_mileage ?? ""}
+                              onChange={(e) => {
+                                const val = e.target.value
+                                const newDays = [...days]
+                                newDays[index].end_mileage = val
+                                if (newDays[index + 1] && newDays[index].status !== "breakdown") {
+                                  newDays[index + 1].start_mileage = val
+                                }
+                                setDays(newDays)
+                              }}
+                            />
+                          </div>
+                          <FileUploadButton
+                            label="ถ่ายรูปหน้าปัด (ขากลับ)"
+                            loading={uploadingField === `end-${index}`}
+                            onUpload={async (file) => {
+                              const url = await uploadImage(file, `end-${index}`)
+                              const newDays = [...days]
+                              newDays[index].mileage_end_image = url
+                              setDays(newDays)
+                            }}
+                            url={d.mileage_end_image}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      /* ── Breakdown Section ── */
+                      <div className="bg-rose-50 p-4 rounded-xl border border-rose-100 space-y-3">
+                        <div className="flex items-center gap-2 text-rose-600 font-bold">
+                          <AlertCircle className="size-5" /> แจ้งเหตุรถเสีย / ขัดข้อง
+                        </div>
+                        <div>
+                          <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">รายละเอียดสาเหตุ</Label>
+                          <Input
+                            placeholder="เช่น ยางแตก, หม้อน้ำมีปัญหา..."
+                            value={d.note ?? ""}
+                            onChange={(e) => {
+                              const newDays = [...days]
+                              newDays[index].note = e.target.value
+                              setDays(newDays)
+                            }}
+                            className="h-11 bg-white rounded-xl border-rose-200 focus-visible:ring-rose-400 text-black"
+                          />
+                        </div>
+                      </div>
+                    )}
 
-                  {/* ── Fuel Section ── */}
-                  <div className="bg-amber-50 p-4 rounded-xl border border-amber-100 space-y-3">
-                    <div className="flex items-center gap-2 text-sm font-bold text-amber-700">
-                      <Fuel className="size-4" /> การเบิกจ่ายน้ำมัน <span className="font-normal text-amber-500">(ระบุเฉพาะวันที่มีการเติม)</span>
-                    </div>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      <div>
-                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">ปริมาณ (ลิตร)</Label>
-                        <Input
-                          type="number"
-                          placeholder="เช่น 40.50"
-                          value={d.fuel_liter ?? ""}
-                          className="h-11 rounded-xl border-slate-200 bg-white font-mono font-bold text-black"
-                          onChange={(e) => {
-                            const newDays = [...days]
-                            newDays[index].fuel_liter = e.target.value
-                            setDays(newDays)
-                          }}
-                        />
-                      </div>
-                      <div>
-                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">ยอดชำระ (บาท)</Label>
-                        <Input
-                          type="number"
-                          placeholder="เช่น 1200"
-                          value={d.fuel_cost ?? ""}
-                          className="h-11 rounded-xl border-slate-200 bg-white font-mono font-bold text-amber-600 focus-visible:ring-amber-400"
-                          onChange={(e) => {
-                            const newDays = [...days]
-                            newDays[index].fuel_cost = e.target.value
-                            setDays(newDays)
-                          }}
-                        />
-                      </div>
-                      <div className="md:col-span-2 lg:col-span-1">
-                        <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block opacity-0 select-none">แนบรูป</Label>
-                        <FileUploadButton
-                          label="แนบรูปใบเสร็จ"
-                          icon={<FileImage className="size-4" />}
-                          loading={uploadingField === `receipt-${index}`}
-                          onUpload={async (file) => {
-                            const url = await uploadImage(file, `receipt-${index}`)
-                            const newDays = [...days]
-                            newDays[index].receipt_image = url
-                            setDays(newDays)
-                          }}
-                          url={d.receipt_image}
-                        />
-                      </div>
-                    </div>
-                  </div>
+                    <Separator className="bg-slate-100" />
 
-                  {/* ── Save Button ── */}
-                  <div className="flex justify-end pt-1">
-                    <Button
-                      className="font-bold rounded-xl h-11 px-7 bg-slate-900 hover:bg-slate-700 text-white shadow-sm transition-all text-sm"
-                      onClick={() => saveDay(index)}
-                      disabled={savingIndex === index}
-                    >
-                      {savingIndex === index
-                        ? <><Loader2 className="mr-2 size-4 animate-spin" /> กำลังบันทึก...</>
-                        : <><Save className="mr-2 size-4" /> บันทึกวันที่ {index + 1}</>
-                      }
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
+                    {/* ── Fuel Section (✅ โชว์หลายรายการ) ── */}
+                    <div className="bg-amber-50/50 p-4 rounded-xl border border-amber-100/50 space-y-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2 text-sm font-bold text-amber-700">
+                          <Fuel className="size-4" /> ประวัติเติมน้ำมันประจำวัน
+                        </div>
+                        <div className="shrink-0 w-auto">
+                          <FuelPopupForm 
+                            d={d} 
+                            index={index} 
+                            uploadingField={uploadingField}
+                            onUploadImage={uploadImage}
+                            onSaveFuel={saveFuelDataOnly}
+                          />
+                        </div>
+                      </div>
+
+                      {todayFuelRecords.length > 0 ? (
+                        <div className="grid gap-2 mt-2">
+                          {todayFuelRecords.map((fuel, fIndex) => (
+                            <div key={fuel.id} className="flex items-center justify-between bg-white px-4 py-2.5 rounded-xl border border-amber-100 shadow-sm">
+                              <div className="flex items-center gap-3">
+                                <div className="bg-amber-100 text-amber-700 size-6 flex items-center justify-center rounded-full text-xs font-bold">{fIndex + 1}</div>
+                                <div>
+                                  <p className="text-[13px] font-bold text-slate-700">
+                                    ยอด <span className="text-amber-600">{fuel.fuel_cost} บาท</span>
+                                  </p>
+                                  <p className="text-[10px] text-slate-400">ปริมาณ {fuel.fuel_liter} ลิตร</p>
+                                </div>
+                              </div>
+                              <Button variant="ghost" size="sm" className="h-8 px-3 text-xs font-bold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg" onClick={() => window.open(fuel.receipt_image, '_blank')}>
+                                <Eye className="size-3 mr-1" /> ดูใบเสร็จ
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <div className="text-center py-4 bg-white/50 rounded-xl border border-dashed border-amber-200">
+                          <p className="text-xs text-amber-600/60 font-medium">ไม่มีรายการแวะปั๊มในวันนี้</p>
+                        </div>
+                      )}
+                    </div>
+
+                    {/* ── Save Button ── */}
+                    <div className="flex justify-end pt-1">
+                      <Button
+                        className="font-bold rounded-xl h-11 px-7 bg-slate-900 hover:bg-slate-700 text-white shadow-sm transition-all text-sm"
+                        onClick={() => saveDay(index)}
+                        disabled={savingIndex === index}
+                      >
+                        {savingIndex === index
+                          ? <><Loader2 className="mr-2 size-4 animate-spin" /> กำลังบันทึก...</>
+                          : <><Save className="mr-2 size-4" /> บันทึกวันที่ {index + 1}</>
+                        }
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
       {/* ── Finish Button (sticky) ── */}
@@ -676,7 +772,7 @@ export default function LogbookPage() {
   const { user } = useAuth()
   const [userProfile, setUserProfile] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null) // ✅ 1. เพิ่ม State ดักจับ Error
+  const [fetchError, setFetchError] = useState(null) 
 
   useEffect(() => {
     loadAllData()
@@ -689,10 +785,9 @@ export default function LogbookPage() {
     }
 
     setIsLoading(true)
-    setFetchError(null) // เคลียร์ Error ก่อนเริ่มโหลด
+    setFetchError(null)
 
     try {
-      // ✅ เพิ่มการดัก Error ให้ครอบคลุมทุกจุดเชื่อมต่อ
       const { data: profile, error: profileErr } = await supabase.from('profiles').select('*').eq('id', user.id).single()
       if (profileErr && profileErr.code !== 'PGRST116') throw profileErr 
       if (profile) setUserProfile(profile)
@@ -725,10 +820,9 @@ export default function LogbookPage() {
       setBookings(data || [])
     } catch (error) {
       console.error("Load Logbook Error:", error)
-      // ✅ 2. แสดง UI Error แทน Swal เพื่อไม่ให้รบกวนหน้าจอ
       setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ต หรือปิดส่วนขยายบล็อกโฆษณา (AdBlock)")
     } finally {
-      setIsLoading(false) // ✅ ปิดหมุนเสมอ
+      setIsLoading(false) 
     }
   }
 
@@ -786,7 +880,7 @@ export default function LogbookPage() {
               startTrip={startTrip}
               isLoading={isLoading}
               onRefresh={loadAllData}
-              fetchError={fetchError} // ✅ ส่งค่า Error เข้าไปให้ Component ลูก
+              fetchError={fetchError} 
             />
           </TabsContent>
 

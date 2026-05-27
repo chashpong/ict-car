@@ -14,7 +14,8 @@ import {
   BarChart3,
   Users,
   LogOut,
-  ShieldAlert
+  ShieldAlert,
+  CalendarDays // ✅ เพิ่มไอคอน CalendarDays
 } from "lucide-react"
 import {
   Sidebar,
@@ -34,18 +35,21 @@ import { useAuth, canAccessRoute, getRoleLabel, getRoleBadgeColor } from "@/lib/
 import { supabase } from "@/lib/supabase"
 import Swal from 'sweetalert2'
 
+// ✅ แทรก "ปฏิทินการใช้รถ" เข้าไปในหมวดหมู่หลัก (mainNav)
 const mainNav = [
-  { title: "แดชบอร์ด",        href: "/",          icon: LayoutDashboard },
-  { title: "การจองรถ",         href: "/bookings",   icon: CalendarCheck   },
-  { title: "อนุมัติคำขอ",      href: "/approvals",  icon: ClipboardCheck  },
-  { title: "ประวัติการอนุมัติ", href: "/history",    icon: History         },
-  { title: "จัดการยานพาหนะ",   href: "/vehicles",   icon: Car             },
-  { title: "จัดการสมาชิก",     href: "/users",      icon: Users           },
-  { title: "คนขับรถ",          href: "/drivers",    icon: Users           },
+  { title: "แดชบอร์ด",        href: "/",            icon: LayoutDashboard },
+  { title: "ปฏิทินการใช้รถ",  href: "/calendar",    icon: CalendarDays    }, // <-- ใส่ตรงนี้ให้หาง่าย
+  { title: "การจองรถ",        href: "/bookings",    icon: CalendarCheck   },
+  { title: "อนุมัติคำขอ",      href: "/approvals",   icon: ClipboardCheck  },
+  { title: "ประวัติการอนุมัติ", href: "/history",     icon: History         },
+  { title: "จัดการยานพาหนะ",   href: "/vehicles",    icon: Car             },
+  { title: "จัดการสมาชิก",     href: "/users",       icon: Users           },
+  { title: "คนขับรถ",          href: "/drivers",     icon: Users           },
 ]
 
 const recordNav = [
   { title: "สมุดบันทึกการใช้รถ", href: "/logbook",     icon: BookOpen   },
+  { title: "ประวัติการขับรถ",    href: "/driving-history", icon: History },
   { title: "ซ่อมบำรุง",         href: "/maintenance", icon: Wrench     },
   { title: "รายงาน",            href: "/reports",     icon: BarChart3  },
   { title: "ประวัติระบบ",       href: "/logs",        icon: ShieldAlert },
