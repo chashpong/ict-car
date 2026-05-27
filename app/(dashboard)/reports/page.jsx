@@ -6,9 +6,9 @@ import { cn } from "@/lib/utils"
 import { 
   FileText, FileSpreadsheet, Fuel, Route, 
   Car, Calendar, Search, Droplet, Milestone, 
-  Loader2, Info, RefreshCw, Printer // ✅ เพิ่ม Icon Printer
+  Loader2, Info, RefreshCw, Printer
 } from "lucide-react"
-import {
+import { 
   Bar, BarChart, XAxis, YAxis, CartesianGrid, ResponsiveContainer, Tooltip, Cell
 } from "recharts"
 import * as XLSX from "xlsx"
@@ -96,15 +96,37 @@ export default function ReportsPage() {
   }, [])
 
   async function fetchData() {
-    setLoading(true)
+    setLoading(false)
     try {
-      const [vRes, lRes] = await Promise.all([
+      // ✅ เพิ่มการดึงข้อมูลจากตาราง fuel_expenses มาประมวลผลร่วมกัน
+      const [vRes, lRes, fRes] = await Promise.all([
         supabase.from("vehicles").select("*"),
-        supabase.from("logbooks").select("*").order("log_date", { ascending: true })
+        supabase.from("logbooks").select("*").order("log_date", { ascending: true }),
+        supabase.from("fuel_expenses").select("*") 
       ]);
 
+      const logbooksData = lRes.data || []
+      const fuelExpensesData = fRes.data || []
+
+      // ✅ Map ข้อมูลเพื่อรวมยอดน้ำมัน (ลิตร และ บาท) จากตาราง fuel_expenses ที่เกิดขึ้นในวันนั้นๆ
+      const mappedLogs = logbooksData.map((log) => {
+        const matchingFuels = fuelExpensesData.filter(
+          (f) => String(f.booking_id) === String(log.booking_id) && f.log_date === log.log_date
+        )
+
+        // รวมยอดลิตรและค่าน้ำมัน (รองรับกรณีเติมมากกว่า 1 ครั้งต่อวัน)
+        const dayFuelLiter = matchingFuels.reduce((sum, f) => sum + Number(f.fuel_liter || 0), 0)
+        const dayFuelCost = matchingFuels.reduce((sum, f) => sum + Number(f.fuel_cost || 0), 0)
+
+        return {
+          ...log,
+          fuel_liter: dayFuelLiter, // ฝังค่ากลับเข้าไปใน Object ของ logbook เดิม
+          fuel_cost: dayFuelCost
+        }
+      })
+
       setVehicles(vRes.data || [])
-      setLogEntries(lRes.data || [])
+      setLogEntries(mappedLogs) // เซ็ตข้อมูลเวอร์ชันอัปเดตลง State หลัก
     } catch (error) {
       console.error("Error loading reports data:", error)
     } finally {
@@ -183,8 +205,8 @@ export default function ReportsPage() {
     const ws = XLSX.utils.json_to_sheet(exportData)
     ws['!cols'] = [{ wch: 15 }, { wch: 20 }, { wch: 15 }, { wch: 15 }, { wch: 15 }, { wch: 18 }, { wch: 18 }];
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, "รายงานการใช้รถ")
-    XLSX.writeFile(wb, `Vehicle_Report_${startDate}_to_${endDate}.xlsx`)
+    Xxlsx.utils.book_append_sheet(wb, ws, "รายงานการใช้รถ")
+    XXLSX.writeFile(wb, `Vehicle_Report_${startDate}_to_${endDate}.xlsx`)
   }
 
   function exportPDF() {
@@ -222,7 +244,6 @@ export default function ReportsPage() {
     doc.save(`Vehicle_Report_${startDate}_to_${endDate}.pdf`)
   }
 
-  // ✅ ฟังก์ชันพิมพ์หน้าเว็บ (กดแล้วเรียก Dialog พรินต์ของเบราว์เซอร์)
   function handlePrintWebPage() {
     window.print();
   }
@@ -230,10 +251,7 @@ export default function ReportsPage() {
   /* ===================== UI ===================== */
 
   return (
-    // ✅ เพิ่มคลาส print:bg-white เพื่อลบสีดำเวลาพิมพ์
     <div className="min-h-screen font-sarabun text-black relative bg-slate-900 print:bg-white print:text-black">
-      
-      {/* 🔴 ซ่อน Background รูปภาพตอนพิมพ์ */}
       <Image 
         src="/images/image.png" 
         alt="Background" 
@@ -243,21 +261,18 @@ export default function ReportsPage() {
       />
       <div className="absolute inset-0 bg-black/60 z-0 print:hidden"></div>
 
-      {/* 🔴 ซ่อน Header เมนูหลักตอนพิมพ์ */}
       <div className="relative z-10 border-b border-white/10 print:hidden">
         <PageHeader title="รายงานและสถิติ" />
       </div>
 
       <div className="p-4 md:p-8 max-w-[1600px] mx-auto space-y-8 relative z-10 print:p-0 print:space-y-4">
         
-        {/* ✅ หัวกระดาษที่จะโชว์ "เฉพาะตอนพิมพ์" เท่านั้น */}
         <div className="hidden print:block text-center border-b border-slate-300 pb-4 mb-4">
           <h1 className="text-2xl font-extrabold text-slate-900">สรุปรายงานการใช้ยานพาหนะส่วนกลาง</h1>
           <p className="text-sm text-slate-600 mt-1">ข้อมูลตั้งแต่วันที่ {formatDateThai(startDate)} ถึง {formatDateThai(endDate)}</p>
           {selectedVehicle !== "all" && <p className="text-sm font-bold mt-1 text-blue-600">กรองเฉพาะรถรหัส: {selectedVehicle}</p>}
         </div>
 
-        {/* 🔴 ซ่อน Title และปุ่มต่างๆ ตอนพิมพ์ */}
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between print:hidden">
           <div className="space-y-1">
             <div className="flex items-center gap-3">
@@ -277,7 +292,6 @@ export default function ReportsPage() {
           </div>
         </div>
 
-        {/* 🔴 ซ่อน Filter Bar ตอนพิมพ์ */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 bg-white/95 backdrop-blur-sm p-6 rounded-[2rem] shadow-sm border border-slate-200 print:hidden">
           <div className="flex-1 w-full grid grid-cols-1 md:grid-cols-3 gap-4">
             <div className="space-y-1.5">
@@ -313,7 +327,6 @@ export default function ReportsPage() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3 w-full md:w-auto pt-4 md:pt-0">
-            {/* ✅ เพิ่มปุ่ม พิมพ์หน้าเว็บ */}
             <Button onClick={handlePrintWebPage} variant="outline" className="flex-1 md:flex-none border-blue-200 text-blue-600 hover:bg-blue-50 hover:text-blue-700 h-11 rounded-xl font-bold shadow-sm">
               <Printer className="mr-2 size-4" /> พิมพ์ (Print)
             </Button>
@@ -328,7 +341,6 @@ export default function ReportsPage() {
 
         {/* SUMMARY KPIs */}
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 print:grid-cols-4 print:gap-2">
-          {/* ✅ ลบสีพื้นหลังและปรับข้อความให้เป็นสีดำตอนพิมพ์ */}
           <Card className="border-none shadow-md bg-gradient-to-br from-blue-400 to-blue-600 text-white overflow-hidden relative rounded-[2rem] print:bg-none print:shadow-none print:border print:border-slate-300 print:text-black print:rounded-xl">
             <div className="absolute right-[-10px] bottom-[-10px] opacity-20 print:hidden"><Route className="size-32" /></div>
             <CardContent className="p-8 relative z-10 print:p-4">
@@ -426,7 +438,6 @@ export default function ReportsPage() {
           </CardHeader>
           <CardContent className="p-0 bg-white/95 print:mt-2">
             <div className="overflow-x-auto">
-              {/* ✅ ปรับเส้นตารางตอนพิมพ์ให้เป็นสีดำชัดเจน */}
               <Table className="print:border-collapse print:border print:border-slate-800">
                 <TableHeader className="bg-slate-50/50 print:bg-slate-100">
                   <TableRow className="border-b border-slate-100 print:border-slate-800">
