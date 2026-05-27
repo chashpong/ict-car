@@ -49,7 +49,6 @@ const mainNav = [
 
 const recordNav = [
   { title: "สมุดบันทึกการใช้รถ", href: "/logbook",     icon: BookOpen   },
-  { title: "ประวัติการขับรถ",    href: "/driving-history", icon: History },
   { title: "ซ่อมบำรุง",         href: "/maintenance", icon: Wrench     },
   { title: "รายงาน",            href: "/reports",     icon: BarChart3  },
   { title: "ประวัติระบบ",       href: "/logs",        icon: ShieldAlert },

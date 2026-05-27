@@ -163,9 +163,9 @@ export function useAuth() {
  * ✅ แก้ไขส่วนการเข้าถึงเมนู (Access Control)
  */
 const ROLE_MENU_ACCESS = {
-  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs", "/audit-logs", "/calendar", "/driving-history"],
+  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs", "/audit-logs", "/calendar"],
   approver: ["/bookings", "/approvals", "/history", "/reports", "/calendar"],
-  driver: ["/logbook", "/calendar", "/driving-history"],
+  driver: ["/logbook", "/calendar"],
   user: ["/bookings", "/calendar"],
 }
 
