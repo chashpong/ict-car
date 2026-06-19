@@ -12,4 +12,4 @@
 :HL["/ict-car/_next/static/media/befcc618a6d7d45d-s.p.0nrx4w2tds3z2.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
 :HL["/ict-car/_next/static/media/e12efafcac952e69-s.p.107q0ua8zr74u.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
 :HL["/ict-car/_next/static/media/e9ed0bc71a38d6c1-s.p.0u5q39-x1eb~d.woff2","font",{"crossOrigin":"","type":"font/woff2"}]
-0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"(dashboard)","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"zKjMH2hYKMwMXy1nKGLCD"}
+0:{"tree":{"name":"","param":null,"prefetchHints":16,"slots":{"children":{"name":"(dashboard)","param":null,"prefetchHints":0,"slots":{"children":{"name":"__PAGE__","param":null,"prefetchHints":0,"slots":null}}}}},"staleTime":300,"buildId":"BXrHQW-qh3Np1s2JmL_cx"}
