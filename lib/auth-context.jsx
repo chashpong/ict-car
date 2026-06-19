@@ -160,11 +160,12 @@ export function useAuth() {
 }
 
 /**
- * ✅ แก้ไขส่วนการเข้าถึงเมนู (Access Control)
+ * ✅ แก้ไขส่วนการเข้าถึงเมนู (Access Control) ให้รองรับ "ผู้ตรวจสอบ (reviewer)"
  */
 const ROLE_MENU_ACCESS = {
-  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs", "/audit-logs", "/calendar"],
-  approver: ["/bookings", "/approvals", "/history", "/reports", "/calendar"],
+  admin: ["/", "/vehicles", "/drivers", "/users", "/bookings", "/approvals", "/history", "/logbook", "/maintenance", "/reports", "/logs", "/audit-logs", "/calendar", "/reviewer"],
+  reviewer: ["/bookings", "/reviewer", "/calendar"], // 🟢 เพิ่มสิทธิ์ใหม่ให้ผู้ตรวจสอบ
+  approver: ["/bookings", "/approvals", "/history", "/reports", "/calendar", "/reviewer"],
   driver: ["/logbook", "/calendar"],
   user: ["/bookings", "/calendar"],
 }
@@ -178,9 +179,11 @@ export function getAccessibleRoutes(role) {
   return ROLE_MENU_ACCESS[role] ?? []
 }
 
+// ✅ เพิ่มป้ายกำกับชื่อตำแหน่ง
 export function getRoleLabel(role) {
   const labels = {
     admin: "ผู้ดูแลระบบ",
+    reviewer: "ผู้ตรวจสอบ", // 🟢 คำแปลสำหรับ Reviewer
     approver: "ผู้อนุมัติ",
     driver: "พนักงานขับรถ",
     user: "ผู้ใช้ทั่วไป",
@@ -188,9 +191,11 @@ export function getRoleLabel(role) {
   return labels[role] || "ไม่ระบุสิทธิ์"
 }
 
+// ✅ เพิ่มสีประจำตำแหน่ง
 export function getRoleBadgeColor(role) {
   const colors = {
     admin: "bg-red-100 text-red-700 border-red-200",
+    reviewer: "bg-orange-100 text-orange-700 border-orange-200", // 🟢 สีส้มสำหรับ Reviewer
     approver: "bg-purple-100 text-purple-700 border-purple-200",
     driver: "bg-amber-100 text-amber-700 border-amber-200",
     user: "bg-blue-100 text-blue-700 border-blue-200",

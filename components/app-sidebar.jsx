@@ -15,7 +15,8 @@ import {
   Users,
   LogOut,
   ShieldAlert,
-  CalendarDays // ✅ เพิ่มไอคอน CalendarDays
+  CalendarDays, // ✅ เพิ่มไอคอน CalendarDays
+  ClipboardList
 } from "lucide-react"
 import {
   Sidebar,
@@ -40,6 +41,7 @@ const mainNav = [
   { title: "แดชบอร์ด",        href: "/",            icon: LayoutDashboard },
   { title: "ปฏิทินการใช้รถ",  href: "/calendar",    icon: CalendarDays    }, // <-- ใส่ตรงนี้ให้หาง่าย
   { title: "การจองรถ",        href: "/bookings",    icon: CalendarCheck   },
+  { title: "ตรวจสอบคำขอ",     href: "/reviewer",    icon: ClipboardList   },
   { title: "อนุมัติคำขอ",      href: "/approvals",   icon: ClipboardCheck  },
   { title: "ประวัติการอนุมัติ", href: "/history",     icon: History         },
   { title: "จัดการยานพาหนะ",   href: "/vehicles",    icon: Car             },

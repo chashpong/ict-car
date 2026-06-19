@@ -6,13 +6,13 @@ import {
   Car, Search, Eye, CalendarIcon, Clock, Trash2, 
   User, Phone, MapPin, CheckCircle2, 
   AlertCircle, Info, Loader2, Users, ClipboardList,
-  FileText, Flag, XCircle, RefreshCw 
+  FileText, Flag, XCircle, RefreshCw, Pencil 
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
-import { Card, CardContent, CardHeader } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from "@/components/ui/dialog"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
@@ -29,14 +29,16 @@ import Swal from 'sweetalert2'
 
 // --- 1. ข้อมูลพื้นฐาน ---
 const statusMap = {
-  pending: { label: "รอดำเนินการ", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
+  pending_review: { label: "รอตรวจสอบ", className: "bg-orange-100 text-orange-700 border-orange-200" },
+  pending_approval: { label: "รอพิจารณา", className: "bg-yellow-100 text-yellow-700 border-yellow-200" },
   approved: { label: "อนุมัติ", className: "bg-green-100 text-green-700 border-green-200" },
   rejected: { label: "ไม่อนุมัติ", className: "bg-red-100 text-red-700 border-red-200" },
-  started: { label: "กำลังเดินทาง", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  in_progress: { label: "กำลังเดินทาง", className: "bg-blue-100 text-blue-700 border-blue-200" },
+  interrupted: { label: "รถเสีย/ฉุกเฉิน", className: "bg-rose-100 text-rose-700 border-rose-200 animate-pulse" },
   completed: { label: "เสร็จสิ้น", className: "bg-gray-100 text-gray-700 border-gray-200" }
 }
 
-const vehicleTypes = ["ไม่ระบุ", "รถเก๋ง", "รถกระบะ", "รถตู้", "รถบัส/รถโดยสาร", "SUV", "รถบรรทุก", "อื่นๆ"]
+const vehicleTypes = ["รถเก๋ง", "รถกระบะ", "รถตู้", "รถบัส/รถโดยสาร", "SUV", "รถบรรทุก", "อื่นๆ"]
 
 const formatThaiDate = (dateString) => {
   if (!dateString) return "ไม่ได้ระบุ";
@@ -109,47 +111,94 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
 }
 
 // --- 3. ฟอร์มการจอง (BookingForm) ---
-// --- 3. ฟอร์มการจอง (BookingForm) ---
-function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) { 
+// 🛡️ เพิ่ม prop initialData เพื่อรับข้อมูลเดิมมาแสดงตอนแก้ไข
+function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initialData = null }) { 
   const [formData, setFormData] = useState({
     user_name: "", position: "", department: "", 
     start_date: format(new Date(), 'yyyy-MM-dd'), end_date: format(new Date(), 'yyyy-MM-dd'), 
     start_time: "08:30", end_time: "16:30", 
     destination: "", origin: "หน่วยงานต้นสังกัด", purpose: "", duty_details: "", 
-    passengers: 1, vehicle_id: "", vehicle_type_preference: "ไม่ระบุ", contact_phone: "" 
+    passengers: 1, vehicle_type_preference: "รถกระบะ", contact_phone: "" 
   })
   
-  // ✅ เพิ่ม State เพื่อป้องกันการคลิกเบิ้ล
   const [isSaving, setIsSaving] = useState(false)
 
-  const getVehicleStatus = (car) => {
-    if (car.status !== 'available') return { status: 'busy', reason: car.status === 'maintenance' ? 'อยู่ระหว่างซ่อมบำรุง' : 'กำลังปฏิบัติงาน' };
+  // 🛡️ ถ้าเป็นการแก้ไข ให้เอาข้อมูลเก่ามาใส่ในฟอร์ม
+  useEffect(() => {
+    if (initialData) {
+      setFormData({
+        ...initialData,
+      });
+    }
+  }, [initialData]);
+
+  const getVehicleStatusForUser = (car) => {
+    if (car.status === 'maintenance') return { isAvailable: false, reason: 'อยู่ระหว่างซ่อมบำรุง' };
+    
+    if (car.seats && car.seats < formData.passengers) {
+      return { isAvailable: false, reason: `ที่นั่งไม่พอ (มี ${car.seats} / ต้องการ ${formData.passengers})` };
+    }
+
     const startReq = parse(`${formData.start_date} ${formData.start_time}`, 'yyyy-MM-dd HH:mm', new Date());
     const endReq = parse(`${formData.end_date} ${formData.end_time}`, 'yyyy-MM-dd HH:mm', new Date());
+    
     const conflict = allBookings.find(b => {
-      if (b.vehicle_id !== car.id || b.status === 'rejected' || b.status === 'completed') return false;
+      // 🛡️ ข้ามการเช็กเวลาชนกันของ "ใบจองตัวเอง" (กรณีแก้ไขวันเวลา)
+      if (initialData && b.id === initialData.id) return false;
+
+      if (b.vehicle_id !== car.id || b.status === 'rejected' || b.status === 'completed' || b.status === 'interrupted') return false;
+      
       const bStart = parse(`${b.start_date} ${b.start_time}`, 'yyyy-MM-dd HH:mm', new Date());
       const bEnd = parse(`${b.end_date} ${b.end_time}`, 'yyyy-MM-dd HH:mm', new Date());
+      
       return isBefore(startReq, bEnd) && isBefore(bStart, endReq);
     });
-    return conflict ? { status: 'busy', reason: 'ชนเวลาจอง' } : { status: 'available' };
+
+    if (conflict) return { isAvailable: false, reason: 'ติดภารกิจช่วงเวลานี้' };
+
+    return { isAvailable: true, reason: 'ว่าง' };
   }
 
-  // ✅ ฟังก์ชันครอบตอนกดปุ่ม Save
   const handleSave = async () => {
-    setIsSaving(true) // ล็อกปุ่มไว้
+    const startDateTime = parse(`${formData.start_date} ${formData.start_time}`, 'yyyy-MM-dd HH:mm', new Date());
+    const endDateTime = parse(`${formData.end_date} ${formData.end_time}`, 'yyyy-MM-dd HH:mm', new Date());
+    
+    if (isBefore(endDateTime, startDateTime)) {
+      Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ถูกต้อง', text: 'วัน-เวลาที่สิ้นสุด ต้องอยู่หลังวัน-เวลาเริ่มต้นครับ' });
+      return;
+    }
+
+    setIsSaving(true)
     try {
-      await onSave(formData)
+      // 🛡️ ลบ object vehicles ที่ติดมาจากการ Join ก่อนส่งไป API เพื่อป้องกัน Error
+      const payload = { ...formData };
+      delete payload.vehicles; 
+
+      await onSave(payload);
     } finally {
-      setIsSaving(false) // คลายล็อกหลังจบงาน (ไม่ว่าจะสำเร็จหรือล้มเหลว)
+      setIsSaving(false)
     }
   }
 
   return (
     <div className="flex flex-col py-4 font-sarabun text-slate-800 max-h-[75vh]">
       <div className="flex-1 overflow-y-auto pr-2 pb-4 space-y-6 custom-scrollbar">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-          <div className="space-y-4 md:border-r md:pr-6 border-slate-100">
+        <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
+          
+          {/* 📝 ฝั่งซ้าย: ฟอร์มกรอกข้อมูล */}
+          <div className="lg:col-span-3 space-y-4 lg:border-r lg:pr-6 border-slate-100">
+            {/* โชว์สาเหตุที่ถูกตีกลับ ถ้าเป็นการแก้ไขคำขอที่โดน Reject */}
+            {initialData?.status === 'rejected' && initialData?.reject_reason && (
+              <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl mb-4 flex gap-2 text-sm">
+                <AlertCircle className="size-5 shrink-0" />
+                <div>
+                  <p className="font-bold">สาเหตุที่ไม่อนุมัติ/ถูกตีกลับ:</p>
+                  <p>{initialData.reject_reason}</p>
+                  <p className="text-[10px] mt-1 opacity-70">กรุณาแก้ไขข้อมูลและกดส่งคำขออีกครั้ง</p>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ผู้ขอใช้รถ</Label>
@@ -172,33 +221,6 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
               <Label className="text-xs font-bold text-slate-500 uppercase ml-1">รายละเอียดภารกิจ</Label>
               <Textarea rows={2} value={formData.duty_details} onChange={(e) => setFormData({ ...formData, duty_details: e.target.value })} placeholder="รายละเอียดเพิ่มเติม" className="rounded-xl resize-none font-sarabun bg-white border-slate-200" />
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-500 uppercase ml-1">จำนวนผู้ร่วมทาง (คน)</Label>
-                <Input type="number" min={1} value={formData.passengers} onChange={(e) => setFormData({ ...formData, passengers: e.target.value })} className="h-11 rounded-xl bg-white border-slate-200" />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ประเภทรถที่ขอ</Label>
-                <Select onValueChange={(v) => setFormData({ ...formData, vehicle_type_preference: v })} value={formData.vehicle_type_preference}>
-                  <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="font-sarabun text-black bg-white">
-                    {vehicleTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">เบอร์ติดต่อกลับ <span className="text-red-500">*</span></Label>
-              <div className="relative group">
-                <Phone className="absolute left-3 top-3.5 size-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
-                <Input value={formData.contact_phone} onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })} placeholder="ชื่อ / เบอร์โทรศัพท์" className="pl-10 h-11 rounded-xl bg-white border-slate-200" />
-              </div>
-            </div>
-          </div>
-
-          <div className="space-y-4">
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-slate-500 ml-1">วันที่เริ่ม <span className="text-red-500">*</span></Label>
@@ -229,48 +251,88 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
                 <Input value={formData.destination} onChange={(e) => setFormData({ ...formData, destination: e.target.value })} className="h-11 rounded-xl bg-white border-slate-200" />
               </div>
             </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 uppercase ml-1">จำนวนผู้ร่วมทาง (คน) <span className="text-red-500">*</span></Label>
+                <Input type="number" min={1} value={formData.passengers} onChange={(e) => setFormData({ ...formData, passengers: Number(e.target.value) })} className="h-11 rounded-xl bg-white border-slate-200" />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ประเภทรถที่ต้องการ</Label>
+                <Select onValueChange={(v) => setFormData({ ...formData, vehicle_type_preference: v })} value={formData.vehicle_type_preference}>
+                  <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent className="font-sarabun text-black bg-white">
+                    {vehicleTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label className="text-xs font-bold text-slate-500 uppercase ml-1">เบอร์ติดต่อกลับ <span className="text-red-500">*</span></Label>
+              <div className="relative group">
+                <Phone className="absolute left-3 top-3.5 size-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
+                <Input value={formData.contact_phone} onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })} placeholder="ชื่อ / เบอร์โทรศัพท์" className="pl-10 h-11 rounded-xl bg-white border-slate-200" />
+              </div>
+            </div>
+          </div>
 
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <Label className="font-bold flex items-center gap-2 text-slate-700">
-                  <Car className="size-4 text-blue-600" /> เลือกรถที่ต้องการจอง
-                </Label>
-                <Badge variant="outline" className="bg-blue-50 text-blue-600 border-blue-100 font-bold text-[10px]">
-                  รถทั้งหมด {vehicles.length} คัน
+          {/* 🚘 ฝั่งขวา: แผงตรวจสอบสถานะรถ */}
+          <div className="lg:col-span-2 bg-slate-50/50 rounded-2xl border border-slate-200/60 p-4 flex flex-col h-full">
+            <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
+              <Label className="font-bold flex items-center gap-2 text-slate-700">
+                <Search className="size-4 text-emerald-600" /> ตรวจสถานะรถ ณ ช่วงเวลาที่เลือก
+              </Label>
+              <div className="flex gap-2">
+                <Badge className="bg-emerald-100 text-emerald-700 border-emerald-200 hover:bg-emerald-100 font-bold">
+                   ว่าง {vehicles.filter(c => getVehicleStatusForUser(c).isAvailable).length}
+                </Badge>
+                <Badge className="bg-rose-100 text-rose-700 border-rose-200 hover:bg-rose-100 font-bold">
+                   ไม่ว่าง {vehicles.filter(c => !getVehicleStatusForUser(c).isAvailable).length}
                 </Badge>
               </div>
-              <div className="grid grid-cols-2 gap-3 max-h-[220px] overflow-y-auto pr-1 custom-scrollbar">
-                {vehicles.map((car) => {
-                  const avail = getVehicleStatus(car); 
-                  const isSelected = formData.vehicle_id === car.id;
-                  const isBusy = avail.status === 'busy';
-                  return (
-                    <div 
-                      key={car.id} 
-                      onClick={() => !isBusy && setFormData({ ...formData, vehicle_id: car.id })}
-                      className={cn(
-                        "p-3 rounded-2xl border-2 transition-all cursor-pointer relative group",
-                        isSelected ? "border-blue-600 bg-blue-50 shadow-md" : "border-slate-100 bg-white hover:border-slate-200",
-                        isBusy && "opacity-50 cursor-not-allowed bg-slate-50 grayscale"
-                      )}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className={cn("p-2 rounded-xl", isBusy ? "bg-slate-200" : "bg-emerald-100 text-emerald-600")}>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-1 xl:grid-cols-2 gap-3 overflow-y-auto max-h-[400px] pr-1 custom-scrollbar">
+              {vehicles.map((car) => {
+                const { isAvailable, reason } = getVehicleStatusForUser(car);
+                return (
+                  <div 
+                    key={car.id} 
+                    className={cn(
+                      "p-3 rounded-xl border-2 transition-all cursor-default",
+                      isAvailable ? "border-emerald-100 bg-white shadow-sm" : "border-rose-100 bg-rose-50/50 opacity-80"
+                    )}
+                  >
+                    <div className="flex justify-between items-start mb-1">
+                      <div className="flex items-center gap-2">
+                        <div className={cn("p-1.5 rounded-lg", isAvailable ? "bg-emerald-100 text-emerald-600" : "bg-slate-200 text-slate-500")}>
                           <Car className="size-4" />
                         </div>
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-xs truncate text-slate-900">{car.license_plate}</p>
-                          <p className="text-[10px] text-slate-500 truncate">{car.brand} {car.model}</p>
-                          <div className={cn("mt-1 flex items-center gap-1 text-[9px] font-bold", isBusy ? "text-rose-600" : "text-emerald-600")}>
-                             {isBusy ? <AlertCircle className="size-2" /> : <CheckCircle2 className="size-2" />}
-                             {isBusy ? avail.reason : "ว่างพร้อมใช้"}
-                          </div>
+                        <div>
+                          <p className="font-extrabold text-xs text-slate-900">{car.license_plate}</p>
+                          <p className="text-[9px] text-slate-500">{car.brand} {car.model}</p>
                         </div>
                       </div>
+                      <Badge className={cn("text-[9px] px-1.5 py-0", isAvailable ? "bg-emerald-500 hover:bg-emerald-500 text-white" : "bg-rose-500 hover:bg-rose-500 text-white")}>
+                        {isAvailable ? <CheckCircle2 className="size-3 mr-1"/> : <XCircle className="size-3 mr-1"/>}
+                        {isAvailable ? "ว่าง" : "ไม่ว่าง"}
+                      </Badge>
                     </div>
-                  )
-                })}
-              </div>
+                    {!isAvailable && (
+                      <div className="mt-2 text-[9px] font-bold text-rose-600 bg-rose-100 p-1.5 rounded-md flex items-center justify-center gap-1">
+                        <Users className="size-3" /> {reason}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+            <div className="mt-auto pt-4">
+              <p className="text-[10px] text-slate-500 text-center flex items-center justify-center gap-1">
+                <Info className="size-3 text-blue-500"/>
+                ระบบจะใช้ข้อมูลนี้ประกอบการพิจารณาจัดสรรรถโดยเจ้าหน้าที่
+              </p>
             </div>
           </div>
         </div>
@@ -280,13 +342,13 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [] }) {
         <Button variant="ghost" onClick={onClose} disabled={isSaving} className="w-full sm:w-auto px-10 h-12 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">ยกเลิก</Button>
         <Button 
           onClick={handleSave} 
-          disabled={!formData.vehicle_id || !formData.purpose || !formData.contact_phone || isSaving}
+          disabled={!formData.purpose || !formData.contact_phone || isSaving}
           className="w-full sm:w-auto bg-[#0f172a] hover:bg-slate-800 px-12 h-12 rounded-2xl font-bold text-white shadow-lg transition-all hover:scale-[1.02] disabled:opacity-70 disabled:cursor-not-allowed"
         >
           {isSaving ? (
-            <><Loader2 className="mr-2 size-5 animate-spin" /> กำลังส่งคำขอ...</>
+            <><Loader2 className="mr-2 size-5 animate-spin" /> {initialData ? "กำลังบันทึก..." : "กำลังส่งคำขอ..."}</>
           ) : (
-            "ส่งคำขอจองรถยนต์"
+            initialData ? "บันทึกการแก้ไข" : "ส่งคำขอจองรถยนต์"
           )}
         </Button>
       </div>
@@ -300,25 +362,31 @@ function BookingTimelineDialog({ booking, onClose }) {
 
   const getStepStatus = (stepName) => {
     const status = booking.status;
+    const flow = ['pending_review', 'pending_approval', 'approved', 'in_progress', 'completed'];
+    
     if (status === 'rejected') {
-      if (stepName === 'pending') return 'completed'; 
+      if (stepName === 'pending_review' || stepName === 'pending_approval') return 'completed'; 
       if (stepName === 'approved') return 'rejected'; 
       return 'pending'; 
     }
-    const flow = ['pending', 'approved', 'started', 'completed'];
-    const currentIndex = flow.indexOf(status);
+    
+    let currentIndex = flow.indexOf(status);
+    if (status === 'interrupted') currentIndex = flow.indexOf('in_progress'); 
+    
     const stepIndex = flow.indexOf(stepName);
 
-    if (stepIndex < currentIndex) return 'completed';
-    if (stepIndex === currentIndex) return status === 'completed' ? 'completed' : 'current';
-    return 'pending';
+    if (stepIndex < currentIndex) return 'completed'; 
+    if (stepIndex === currentIndex) return status === 'completed' ? 'completed' : 'current'; 
+    
+    return 'pending'; 
   };
 
   const steps = [
-    { id: 'pending', title: 'ส่งคำขอจองรถ', desc: 'ระบบได้รับคำขอของคุณแล้ว รอผู้มีอำนาจพิจารณา', icon: <FileText className="size-5" /> },
-    { id: 'approved', title: 'อนุมัติ & จัดสรรรถ', desc: booking.status === 'rejected' ? 'คำขอของคุณไม่ได้รับการอนุมัติ' : 'พิจารณาอนุมัติพร้อมจัดสรรรถและคนขับเรียบร้อย', icon: booking.status === 'rejected' ? <XCircle className="size-5" /> : <CheckCircle2 className="size-5" /> },
-    { id: 'started', title: 'กำลังเดินทาง', desc: 'พนักงานขับรถเริ่มการเดินทางแล้ว', icon: <Car className="size-5" /> },
-    { id: 'completed', title: 'เสร็จสิ้น', desc: 'พนักงานขับรถส่งรายงานและสิ้นสุดทริปแล้ว', icon: <Flag className="size-5" /> },
+    { id: 'pending_review', title: '1. ส่งคำขอจองรถ', desc: 'ระบบได้รับคำขอของคุณแล้ว อยู่ระหว่างรอเจ้าหน้าที่ตรวจสอบข้อมูล', icon: <FileText className="size-5" /> },
+    { id: 'pending_approval', title: '2. ตรวจสอบ & จัดสรรรถ', desc: 'เจ้าหน้าที่พิจารณาความเหมาะสมและจัดสรรยานพาหนะ/คนขับเรียบร้อย', icon: <ClipboardList className="size-5" /> },
+    { id: 'approved', title: '3. พิจารณาอนุมัติ', desc: booking.status === 'rejected' ? `ไม่อนุมัติคำขอ` : 'ผู้มีอำนาจพิจารณาอนุมัติการเดินทาง', icon: booking.status === 'rejected' ? <XCircle className="size-5" /> : <CheckCircle2 className="size-5" /> },
+    { id: 'in_progress', title: '4. กำลังเดินทาง', desc: booking.status === 'interrupted' ? 'เกิดเหตุขัดข้อง/รถเสียระหว่างทาง รอการสับเปลี่ยนรถ' : 'พนักงานขับรถเริ่มการเดินทางแล้ว', icon: booking.status === 'interrupted' ? <AlertCircle className="size-5" /> : <Car className="size-5" /> },
+    { id: 'completed', title: '5. เสร็จสิ้นภารกิจ', desc: 'พนักงานขับรถส่งรายงานและสิ้นสุดทริปแล้ว', icon: <Flag className="size-5" /> },
   ];
 
   return (
@@ -340,17 +408,17 @@ function BookingTimelineDialog({ booking, onClose }) {
           </div>
           <div>
             <p className="text-slate-400 text-[10px] uppercase font-bold tracking-wider">รถที่จัดสรร</p>
-            <p className="font-bold text-blue-300 mt-0.5">{booking.vehicles?.license_plate || "รอดำเนินการ"}</p>
+            <p className="font-bold text-blue-300 mt-0.5">{booking.vehicles?.license_plate || "รอการจัดสรร"}</p>
           </div>
         </div>
       </div>
 
-      <div className="p-6 md:p-8 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative z-10">
-        <h4 className="font-bold text-slate-800 mb-6 flex items-center gap-2">
+      <div className="p-6 md:p-8 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative z-10 bg-slate-50">
+        <h4 className="font-bold text-slate-800 mb-8 flex items-center gap-2">
           <Info className="size-5 text-blue-600" /> ลำดับสถานะการดำเนินการ
         </h4>
         
-        <div className="relative space-y-6 md:space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-slate-100 before:via-slate-200 before:to-slate-100">
+        <div className="relative space-y-6 md:space-y-8 before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-blue-100 before:via-blue-200 before:to-blue-100">
           {steps.map((step) => {
             const status = getStepStatus(step.id);
             let bgColor = "bg-white border-slate-200 text-slate-400";
@@ -376,7 +444,7 @@ function BookingTimelineDialog({ booking, onClose }) {
                 <div className={`flex items-center justify-center w-10 h-10 rounded-full border-2 shrink-0 md:absolute md:left-1/2 md:-translate-x-1/2 shadow-sm z-10 transition-colors duration-300 ${bgColor}`}>
                   {step.icon}
                 </div>
-                <div className={`ml-4 md:ml-0 w-[calc(100%-3.5rem)] md:w-[calc(50%-3rem)] p-4 rounded-2xl shadow-sm border transition-all duration-300 ${status === 'current' ? 'border-blue-200 shadow-blue-100 scale-[1.02] bg-white' : 'border-slate-100 bg-white/90 backdrop-blur-sm'} ${status === 'rejected' ? 'border-rose-200 bg-rose-50' : ''}`}>
+                <div className={`ml-4 md:ml-0 w-[calc(100%-3.5rem)] md:w-[calc(50%-3rem)] p-4 rounded-2xl shadow-sm border transition-all duration-300 ${status === 'current' ? 'border-blue-300 shadow-blue-100 scale-[1.02] bg-white' : 'border-slate-100 bg-white/90 backdrop-blur-sm'} ${status === 'rejected' ? 'border-rose-200 bg-rose-50' : ''}`}>
                   <div className="flex items-center justify-between mb-1">
                     <h5 className={`font-extrabold ${textColor}`}>{step.title}</h5>
                     {status === 'completed' && <CheckCircle2 className="size-4 text-emerald-500" />}
@@ -408,25 +476,26 @@ export default function BookingsPage() {
   const [vehicles, setVehicles] = useState([])
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
+  
+  // 🛡️ สถานะสำหรับเปิด Dialog และเก็บข้อมูลที่จะแก้ไข
   const [createOpen, setCreateOpen] = useState(false)
+  const [editingBooking, setEditingBooking] = useState(null)
+  
   const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null) // ✅ เพิ่ม State เพื่อเก็บสถานะ Error
-
+  const [fetchError, setFetchError] = useState(null)
   const [viewBooking, setViewBooking] = useState(null)
 
   useEffect(() => { loadData() }, [user]) 
 
   async function loadData() {
-    // ✅ ถ้า Chrome บล็อกคุกกี้ ทำให้โหลด user ไม่ได้ ให้หยุดหมุนทันที
     if (!user) {
       setIsLoading(false);
       return;
     }
     
     setIsLoading(true);
-    setFetchError(null); // เคลียร์ error เดิมทิ้งก่อนเริ่มดึงใหม่
+    setFetchError(null);
 
-    // ✅ Optimize 1: จำกัดแถวแค่ 50 รายการล่าสุด
     let query = supabase
       .from("bookings")
       .select("*, vehicles(license_plate, brand, model)")
@@ -440,8 +509,7 @@ export default function BookingsPage() {
     try {
       const promises = [
         query,
-        // ✅ Optimize 2: เลือกเฉพาะคอลัมน์ที่จำเป็นจากตาราง vehicles ช่วยให้โหลดไวขึ้นมาก
-        supabase.from("vehicles").select("id, license_plate, brand, model, status")
+        supabase.from("vehicles").select("id, license_plate, brand, model, status, seats")
       ];
 
       if (user?.id && !userProfile) {
@@ -450,7 +518,6 @@ export default function BookingsPage() {
 
       const results = await Promise.all(promises);
 
-      // ✅ ดักจับ Error จากฝั่ง Supabase (ถ้าข้อมูลพัง ระบบจะโยนไปเข้า catch)
       if (results[0].error) throw results[0].error;
       if (results[1].error) throw results[1].error;
 
@@ -460,36 +527,81 @@ export default function BookingsPage() {
       
     } catch (error) {
       console.error("Load Data Error:", error);
-      // ✅ ตั้งค่า Error Message ให้ผู้ใช้ทราบ
-      setFetchError("เกิดข้อผิดพลาดในการดึงข้อมูล กรุณาตรวจสอบการเชื่อมต่อ หรือปิดส่วนขยาย (AdBlock) ของเบราว์เซอร์ชั่วคราว");
+      setFetchError("เกิดข้อผิดพลาดในการดึงข้อมูล กรุณาตรวจสอบการเชื่อมต่อ");
     } finally {
-      setIsLoading(false); // ✅ บังคับหยุดหมุน ไม่ว่าจะสำเร็จหรือพังก็ตาม
+      setIsLoading(false);
     }
   }
 
+  // 🛡️ ฟังก์ชันเปิด Dialog แบบสร้างใหม่
+  const handleOpenCreate = () => {
+    setEditingBooking(null);
+    setCreateOpen(true);
+  }
+
+  // 🛡️ ฟังก์ชันเปิด Dialog แบบแก้ไข
+  const handleOpenEdit = (booking) => {
+    setEditingBooking(booking);
+    setCreateOpen(true);
+  }
+
+ // 🛡️ เปลี่ยนมาใช้ Supabase ยิงตรงจากหน้าบ้าน (ไม่ต้องง้อโฟลเดอร์ /api)
   async function saveBooking(data) {
     if (!user) return;
     
-    const { data: newBooking, error } = await supabase
-      .from("bookings")
-      .insert([{ ...data, user_id: user.id, status: "pending" }])
-      .select()
-      .single();
+    try {
+      const isEditing = !!data.id; 
+      
+      // 1. คลีนข้อมูลก่อนส่ง: ลบ object vehicles ที่ติดมาจากการ Join ก่อนหน้า
+      const payload = { ...data };
+      delete payload.vehicles; 
 
-    if (!error) {
-      await supabase.from('audit_logs').insert([{
-        user_id: user.id,
-        user_name: userProfile?.full_name || user.email,
-        action: 'CREATE',
-        entity_type: 'bookings',
-        entity_id: String(newBooking.id),
-        new_data: newBooking
-      }]);
+      // 2. บังคับใส่ค่าเริ่มต้นที่สำคัญ (DevSecOps)
+      payload.status = 'pending_review'; // บังคับกลับไปรอตรวจสอบเสมอ
+      payload.user_id = user.id;         // ยัด ID ของคนจองใส่เข้าไปด้วย
 
-      setCreateOpen(false);
-      Swal.fire({ icon: 'success', title: 'จองรถสำเร็จ', text: 'คำขอของคุณอยู่ในระหว่างรอการอนุมัติ', timer: 2000, showConfirmButton: false });
-      loadData();
-    } else {
+      let result;
+
+      if (isEditing) {
+        // ✏️ โหมดแก้ไข (UPDATE)
+        result = await supabase
+          .from("bookings")
+          .update(payload)
+          .eq("id", payload.id)
+          .eq("user_id", user.id); // ป้องกันคนอื่นมาแอบแก้ใบจองที่ไม่ใช่ของตัวเอง
+      } else {
+        // 🆕 โหมดสร้างใหม่ (INSERT)
+        result = await supabase
+          .from("bookings")
+          .insert([payload])
+          .select()
+          .single();
+      }
+  
+      if (!result.error) {
+        // บันทึกประวัติการกระทำลง Audit Log
+        await supabase.from('audit_logs').insert([{
+          user_id: user.id,
+          user_name: userProfile?.full_name || user.email,
+          action: isEditing ? 'UPDATE' : 'CREATE',
+          entity_type: 'bookings',
+          entity_id: String(isEditing ? payload.id : result.data?.id),
+        }]);
+
+        setCreateOpen(false);
+        setEditingBooking(null);
+        Swal.fire({ 
+          icon: 'success', 
+          title: isEditing ? 'แก้ไขสำเร็จ' : 'ส่งคำขอสำเร็จ', 
+          text: isEditing ? 'อัปเดตและส่งตรวจสอบใหม่แล้ว' : 'ระบบส่งคำขอให้ผู้ตรวจสอบเรียบร้อยแล้ว', 
+          timer: 2000, 
+          showConfirmButton: false 
+        });
+        loadData(); // โหลดตารางใหม่
+      } else {
+        throw new Error(result.error.message || 'ไม่สามารถบันทึกข้อมูลได้');
+      }
+    } catch (error) {
       Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: error.message });
     }
   }
@@ -573,10 +685,11 @@ export default function BookingsPage() {
               </SelectTrigger>
               <SelectContent className="font-sarabun text-black bg-white">
                 <SelectItem value="all">สถานะทั้งหมด</SelectItem>
-                <SelectItem value="pending">รอดำเนินการ</SelectItem>
+                <SelectItem value="pending_review">รอตรวจสอบ</SelectItem>
+                <SelectItem value="pending_approval">รอพิจารณา</SelectItem>
                 <SelectItem value="approved">อนุมัติแล้ว</SelectItem>
                 <SelectItem value="rejected">ไม่อนุมัติ</SelectItem>
-                <SelectItem value="started">กำลังเดินทาง</SelectItem>
+                <SelectItem value="in_progress">กำลังเดินทาง</SelectItem>
                 <SelectItem value="completed">เสร็จสิ้น</SelectItem>
               </SelectContent>
             </Select>
@@ -593,21 +706,33 @@ export default function BookingsPage() {
             </Button>
           </div>
 
-          <Dialog open={createOpen} onOpenChange={setCreateOpen}>
+          <Dialog 
+            open={createOpen} 
+            onOpenChange={(open) => {
+              setCreateOpen(open);
+              if (!open) setEditingBooking(null); // เคลียร์ข้อมูลตอนปิด Popup
+            }}
+          >
             <DialogTrigger asChild>
-              <Button className="bg-[#0f172a] hover:bg-slate-800 text-white font-bold h-12 px-8 rounded-2xl shadow-lg transition-transform hover:scale-[1.02]">
+              <Button onClick={handleOpenCreate} className="bg-[#0f172a] hover:bg-slate-800 text-white font-bold h-12 px-8 rounded-2xl shadow-lg transition-transform hover:scale-[1.02]">
                 <Car className="mr-2 size-5" /> จองรถยนต์ใหม่
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-4xl p-0 rounded-[2.5rem] border-none overflow-hidden bg-white shadow-2xl text-black">
+            <DialogContent className="sm:max-w-6xl p-0 rounded-[2.5rem] border-none overflow-hidden bg-white shadow-2xl text-black">
               <DialogHeader className="bg-[#0f172a] p-8 text-white">
-                <DialogTitle className="text-2xl font-bold text-center tracking-tight">ใบขออนุญาตใช้รถส่วนกลาง (แบบ ๓)</DialogTitle>
-                <DialogDescription className="hidden">
-                  แบบฟอร์มกรอกรายละเอียดเพื่อขออนุมัติการใช้งานรถยนต์ส่วนกลาง
-                </DialogDescription>
+                <DialogTitle className="text-2xl font-bold text-center tracking-tight">
+                  {editingBooking ? 'แก้ไขใบขออนุญาตใช้รถส่วนกลาง' : 'ใบขออนุญาตใช้รถส่วนกลาง (แบบ ๓)'}
+                </DialogTitle>
+                <DialogDescription className="hidden">แบบฟอร์มกรอกรายละเอียด</DialogDescription>
               </DialogHeader>
               <div className="px-10 pb-4 pt-2">
-                <BookingForm onClose={() => setCreateOpen(false)} onSave={saveBooking} vehicles={vehicles} allBookings={bookings} />
+                <BookingForm 
+                  onClose={() => { setCreateOpen(false); setEditingBooking(null); }} 
+                  onSave={saveBooking} 
+                  vehicles={vehicles} 
+                  allBookings={bookings} 
+                  initialData={editingBooking} // ส่งข้อมูลที่จะแก้ไขเข้าไป
+                />
               </div>
             </DialogContent>
           </Dialog>
@@ -619,24 +744,22 @@ export default function BookingsPage() {
               <TableHeader className="bg-slate-50/80">
                 <TableRow className="border-b border-slate-200/50">
                   <TableHead className="pl-6 py-5 font-bold text-slate-500 uppercase text-[11px] tracking-widest">เลขที่</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">ผู้ขอ / หน่วยงาน</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">ผู้ขอ</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">หน่วยงาน</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">วัตถุประสงค์</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">เริ่มเดินทาง</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">เดินทางกลับ</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">คน</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">ประเภทรถ</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">ทะเบียนรถ</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">เริ่ม</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">สิ้นสุด</TableHead>
+                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">ผู้โดยสาร</TableHead>
                   <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">สถานะ</TableHead>
                   <TableHead className="pr-6 text-right font-bold text-slate-500 uppercase text-[11px] tracking-widest">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={10} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />กำลังโหลดข้อมูล...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />กำลังโหลดข้อมูล...</TableCell></TableRow>
                 ) : fetchError ? (
-                  // ✅ แสดงกล่องแจ้งเตือน Error ชัดเจน หากเกิดปัญหาดึงข้อมูล
                   <TableRow>
-                    <TableCell colSpan={10} className="h-48 text-center bg-rose-50/50">
+                    <TableCell colSpan={9} className="h-48 text-center bg-rose-50/50">
                       <div className="flex flex-col items-center justify-center p-4">
                         <AlertCircle className="mb-3 text-rose-500 size-10 animate-bounce" />
                         <p className="text-rose-800 font-extrabold text-lg mb-1">พบปัญหาการเชื่อมต่อฐานข้อมูล</p>
@@ -648,7 +771,7 @@ export default function BookingsPage() {
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={10} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={9} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
                 ) : filtered.map((b) => (
                   <TableRow key={b.id} className="hover:bg-blue-50/50 transition-colors border-b border-slate-100/50 group">
                     <TableCell className="pl-6 font-mono text-xs font-bold text-slate-500 uppercase">
@@ -656,7 +779,9 @@ export default function BookingsPage() {
                     </TableCell>
                     <TableCell>
                       <p className="font-bold text-slate-900">{b.user_name}</p>
-                      <p className="text-[10px] text-slate-500 truncate max-w-[120px]">{b.department || "ไม่ระบุแผนก"}</p>
+                    </TableCell>
+                    <TableCell className="max-w-[120px]">
+                      <p className="text-[11px] text-slate-600 truncate">{b.department || "-"}</p>
                     </TableCell>
                     <TableCell className="max-w-[150px]">
                       <p className="text-xs text-slate-600 truncate">{b.purpose || "-"}</p>
@@ -673,14 +798,6 @@ export default function BookingsPage() {
                       {b.passengers}
                     </TableCell>
                     <TableCell className="text-center">
-                      <Badge variant="outline" className="bg-slate-50 border-slate-200 text-slate-600 text-[9px] font-bold h-6 rounded-md shadow-sm">
-                        {b.vehicle_type_preference || "-"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center font-mono font-bold text-blue-700 text-xs">
-                      {b.vehicles?.license_plate || "-"}
-                    </TableCell>
-                    <TableCell className="text-center">
                       <Badge className={cn("px-3 py-0.5 rounded-full text-[9px] font-bold border shadow-sm", statusMap[b.status]?.className)}>
                         {statusMap[b.status]?.label}
                       </Badge>
@@ -688,6 +805,19 @@ export default function BookingsPage() {
                     <TableCell className="pr-6 text-right">
                       <div className="flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
                         
+                        {/* 🛡️ ปุ่มแก้ไข (แสดงเฉพาะสถานะรอตรวจสอบ หรือ ถูกตีกลับ) */}
+                        {(b.status === 'pending_review' || b.status === 'rejected') && (
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            onClick={() => handleOpenEdit(b)} 
+                            className="text-amber-500 hover:bg-amber-100 hover:text-amber-700 rounded-xl h-9 w-9 transition-colors"
+                            title="แก้ไขคำขอ"
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                        )}
+
                         <Button 
                           variant="ghost" 
                           size="icon" 
@@ -698,7 +828,8 @@ export default function BookingsPage() {
                           <Eye className="size-4" />
                         </Button>
 
-                        {b.status === 'pending' && (
+                        {/* 🛡️ ปุ่มลบ (แสดงเฉพาะสถานะรอตรวจสอบ) */}
+                        {b.status === 'pending_review' && (
                           <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} className="text-rose-500 hover:bg-rose-100 hover:text-rose-700 rounded-xl h-9 w-9 transition-colors">
                             <Trash2 className="size-4" />
                           </Button>
