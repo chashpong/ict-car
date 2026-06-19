@@ -1,7 +1,12 @@
 self.__BUILD_MANIFEST = {
   "__rewrites": {
     "afterFiles": [],
-    "beforeFiles": [],
+    "beforeFiles": [
+      {
+        "source": "/ict-car//_next/:path+",
+        "destination": "/ict-car/_next/:path+"
+      }
+    ],
     "fallback": []
   },
   "sortedPages": [
