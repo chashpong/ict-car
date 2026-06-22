@@ -55,7 +55,24 @@ export function LoginForm() {
       setError(result.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง")
       setIsSubmitting(false) 
     } else {
-      window.location.href = "/"
+      // ✅ 1. ปิดหน้าจอโหลด
+      Swal.close() 
+      
+      // ✅ 2. ดึงตำแหน่ง (Role) ของคนที่เพิ่งล็อกอินเข้ามา
+      const userRole = result.user?.role || "user"
+      
+      // ✅ 3. เช็กสิทธิ์แล้วพาวาร์ปไปหน้าที่ถูกต้อง (ทำ Hard Navigate แก้ปัญหาค้าง)
+      if (userRole === "admin") {
+        window.location.href = "/" 
+      } else if (userRole === "approver") {
+        window.location.href = "/approvals"
+      } else if (userRole === "reviewer") {
+        window.location.href = "/reviewer"
+      } else if (userRole === "driver") {
+        window.location.href = "/logbook"
+      } else {
+        window.location.href = "/bookings" // สำหรับ user ทั่วไป
+      }
     }
   }
 
