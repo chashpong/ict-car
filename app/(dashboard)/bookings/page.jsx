@@ -488,29 +488,32 @@ export default function BookingsPage() {
   useEffect(() => { loadData() }, [user]) 
 
   async function loadData() {
+    // 1. ถ้ายังไม่มี user ให้หยุดรอก่อน
     if (!user) {
-      setIsLoading(false);
-      return;
+      return; 
     }
-    
+
     setIsLoading(true);
     setFetchError(null);
 
-    let query = supabase
-      .from("bookings")
-      .select("*, vehicles(license_plate, brand, model)")
-      .order("created_at", { ascending: false })
-      .limit(50); 
-    
-    if (user.role === "user") {
-      query = query.eq("user_id", user.id);
-    }
-
     try {
+      // 🛑 [จุดแก้ปัญหา เพิ่มบรรทัดนี้เข้าไปเลยครับ!] 🛑
+      // บังคับให้ระบบ "รอ" จนกว่า Supabase จะโหลด Session หลังบ้านเสร็จสมบูรณ์
+      await supabase.auth.getSession();
+
+      // ... (โค้ดดึงข้อมูลเดิมของคุณทั้งหมดให้อยู่ต่อจากนี้) ...
+      let query = supabase.from("bookings").select("*, vehicles(license_plate, brand, model)").order("created_at", { ascending: false }).limit(50);
+
+      if (user.role === "user") {
+        query = query.eq("user_id", user.id);
+      }
+
       const promises = [
         query,
         supabase.from("vehicles").select("id, license_plate, brand, model, status, seats")
       ];
+      
+     
 
       if (user?.id && !userProfile) {
         promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
