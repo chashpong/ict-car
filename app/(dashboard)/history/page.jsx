@@ -26,6 +26,10 @@ function HistoryDialogContent({ booking, userProfile, onClose }) {
   const documentRef = useRef(null)
   const isCompleted = booking.status === "completed"
 
+  // ✅ ล็อกขนาด A4 แบบตายตัว
+  const A4_WIDTH_PX = 793.7;
+  const A4_HEIGHT_PX = 1122.5;
+
   const handlePrint = useReactToPrint({
     contentRef: documentRef, 
     documentTitle: `ใบขออนุญาตใช้รถ_${booking.user_name}`,
@@ -66,8 +70,29 @@ function HistoryDialogContent({ booking, userProfile, onClose }) {
         </div>
       </div>
 
-      <div className="flex-1 min-h-0 overflow-y-auto flex justify-center pb-10 custom-scrollbar">
-        <div ref={documentRef} className="print-container shadow-xl rounded-xl overflow-hidden border border-slate-200 bg-white h-max">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-auto flex justify-center pb-10 custom-scrollbar relative">
+        
+        {/* ✅ เพิ่ม style สำหรับบังคับ Print เหมือนในหน้าอนุมัติ */}
+        <style dangerouslySetInnerHTML={{__html: `
+          @media print {
+            @page {
+              size: A4 portrait;
+              margin: 0;
+            }
+            body {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+            }
+            .hide-on-print { display: none !important; }
+            .show-on-print { display: block !important; }
+          }
+        `}} />
+
+        <div 
+          ref={documentRef} 
+          className="print-container relative shadow-xl rounded-xl overflow-hidden border border-slate-200 bg-white shrink-0 print:shadow-none print:border-none print:m-0 print:p-0"
+          style={{ width: `${A4_WIDTH_PX}px`, height: `${A4_HEIGHT_PX}px` }}
+        >
           <Form3Document 
             booking={booking} 
             driverName={booking.display_driver_name} 

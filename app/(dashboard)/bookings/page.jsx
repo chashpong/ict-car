@@ -6,7 +6,7 @@ import {
   Car, Search, Eye, CalendarIcon, Clock, Trash2, 
   User, Phone, MapPin, CheckCircle2, 
   AlertCircle, Info, Loader2, Users, ClipboardList,
-  FileText, Flag, XCircle, RefreshCw, Pencil 
+  FileText, Flag, XCircle, RefreshCw, Pencil, ClipboardCheck, X
 } from "lucide-react"
 import { PageHeader } from "@/components/page-header"
 import { Button } from "@/components/ui/button"
@@ -61,11 +61,11 @@ function TimePickerClock({ value, onChange }) {
   return (
     <Popover open={isOpen} onOpenChange={setIsOpen}>
       <PopoverTrigger asChild>
-        <Button variant="outline" className={cn("w-full justify-start text-left font-normal rounded-xl h-11", !value && "text-muted-foreground")}>
+        <Button variant="outline" className={cn("w-full justify-start text-left font-normal rounded-xl h-11 border-slate-200 text-slate-800", !value && "text-muted-foreground")}>
           <Clock className="mr-2 h-4 w-4" />{value ? `${value} น.` : "เลือกเวลา"}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[280px] p-0 rounded-2xl overflow-hidden" align="start">
+      <PopoverContent className="w-[280px] p-0 rounded-2xl overflow-hidden shadow-xl" align="start">
         <div className="flex h-[240px] divide-x border-b bg-white font-sarabun text-black">
           <div className="flex flex-1 flex-col overflow-y-auto p-2 scrollbar-hide">
             {hours.map((h) => (
@@ -91,7 +91,7 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal rounded-xl h-11", !date && "text-muted-foreground")}>
+        <Button variant={"outline"} className={cn("w-full justify-start text-left font-normal rounded-xl h-11 border-slate-200 text-slate-800", !date && "text-muted-foreground")}>
           <CalendarIcon className="mr-2 h-4 w-4" />{date ? formatThaiDate(dateValue) : <span>{placeholder}</span>}
         </Button>
       </PopoverTrigger>
@@ -111,7 +111,6 @@ function DatePickerThai({ dateValue, onDateChange, placeholder }) {
 }
 
 // --- 3. ฟอร์มการจอง (BookingForm) ---
-// 🛡️ เพิ่ม prop initialData เพื่อรับข้อมูลเดิมมาแสดงตอนแก้ไข
 function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initialData = null }) { 
   const [formData, setFormData] = useState({
     user_name: "", position: "", department: "", 
@@ -121,16 +120,38 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initial
     passengers: 1, vehicle_type_preference: "รถกระบะ", contact_phone: "" 
   })
   
+  // ✅ เพิ่มตัวแปรคุม State ของช่องกรอก "อื่นๆ"
+  const [isOtherVehicle, setIsOtherVehicle] = useState(false);
+  const [otherVehicleText, setOtherVehicleText] = useState("");
+
   const [isSaving, setIsSaving] = useState(false)
 
-  // 🛡️ ถ้าเป็นการแก้ไข ให้เอาข้อมูลเก่ามาใส่ในฟอร์ม
   useEffect(() => {
     if (initialData) {
       setFormData({
         ...initialData,
       });
+
+      // ถ้าประเภทรถเดิมไม่อยู่ใน List ให้แสดงว่าเลือก "อื่นๆ" แล้วเปิดช่องกรอก
+      if (!vehicleTypes.includes(initialData.vehicle_type_preference)) {
+        setIsOtherVehicle(true);
+        setFormData(prev => ({ ...prev, vehicle_type_preference: "อื่นๆ" }));
+        setOtherVehicleText(initialData.vehicle_type_preference);
+      }
     }
   }, [initialData]);
+
+  // ✅ ฟังก์ชันดักจับควบคุมการกรอกเบอร์โทรศัพท์ (ให้กรอกได้เฉพาะตัวเลขเท่านั้น)
+  const handlePhoneChange = (e) => {
+    const inputValue = e.target.value;
+    // ใช้ Regex แทนที่อักขระทุกตัวที่ไม่ใช่ตัวเลข (0-9) ด้วยช่องว่างเปล่า
+    const onlyNumbers = inputValue.replace(/\D/g, "");
+    
+    // จำกัดความยาวไม่ให้เกิน 10 หลัก (มาตรฐานเบอร์โทรศัพท์ทั่วไป) เพื่อ UX ที่ดี
+    if (onlyNumbers.length <= 10) {
+      setFormData({ ...formData, contact_phone: onlyNumbers });
+    }
+  };
 
   const getVehicleStatusForUser = (car) => {
     if (car.status === 'maintenance') return { isAvailable: false, reason: 'อยู่ระหว่างซ่อมบำรุง' };
@@ -143,7 +164,6 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initial
     const endReq = parse(`${formData.end_date} ${formData.end_time}`, 'yyyy-MM-dd HH:mm', new Date());
     
     const conflict = allBookings.find(b => {
-      // 🛡️ ข้ามการเช็กเวลาชนกันของ "ใบจองตัวเอง" (กรณีแก้ไขวันเวลา)
       if (initialData && b.id === initialData.id) return false;
 
       if (b.vehicle_id !== car.id || b.status === 'rejected' || b.status === 'completed' || b.status === 'interrupted') return false;
@@ -168,11 +188,25 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initial
       return;
     }
 
+    if (isOtherVehicle && !otherVehicleText.trim()) {
+      Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: 'กรุณาระบุประเภทรถที่คุณต้องการในช่อง "อื่นๆ"' });
+      return;
+    }
+
+    // ตรวจความยาวเบอร์โทรสั้นเกินไปหรือไม่เพื่อป้องกันข้อมูลขยะ
+    if (formData.contact_phone.length < 9) {
+      Swal.fire({ icon: 'warning', title: 'เบอร์โทรศัพท์ไม่ถูกต้อง', text: 'กรุณาระบุหมายเลขโทรศัพท์ให้ครบถ้วนด้วยครับ' });
+      return;
+    }
+
     setIsSaving(true)
     try {
-      // 🛡️ ลบ object vehicles ที่ติดมาจากการ Join ก่อนส่งไป API เพื่อป้องกัน Error
       const payload = { ...formData };
       delete payload.vehicles; 
+
+      if (isOtherVehicle) {
+        payload.vehicle_type_preference = otherVehicleText.trim();
+      }
 
       await onSave(payload);
     } finally {
@@ -185,20 +219,7 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initial
       <div className="flex-1 overflow-y-auto pr-2 pb-4 space-y-6 custom-scrollbar">
         <div className="grid grid-cols-1 lg:grid-cols-5 gap-8">
           
-          {/* 📝 ฝั่งซ้าย: ฟอร์มกรอกข้อมูล */}
           <div className="lg:col-span-3 space-y-4 lg:border-r lg:pr-6 border-slate-100">
-            {/* โชว์สาเหตุที่ถูกตีกลับ ถ้าเป็นการแก้ไขคำขอที่โดน Reject */}
-            {initialData?.status === 'rejected' && initialData?.reject_reason && (
-              <div className="bg-rose-50 border border-rose-200 text-rose-700 p-3 rounded-xl mb-4 flex gap-2 text-sm">
-                <AlertCircle className="size-5 shrink-0" />
-                <div>
-                  <p className="font-bold">สาเหตุที่ไม่อนุมัติ/ถูกตีกลับ:</p>
-                  <p>{initialData.reject_reason}</p>
-                  <p className="text-[10px] mt-1 opacity-70">กรุณาแก้ไขข้อมูลและกดส่งคำขออีกครั้ง</p>
-                </div>
-              </div>
-            )}
-
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ผู้ขอใช้รถ</Label>
@@ -256,28 +277,53 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initial
                 <Label className="text-xs font-bold text-slate-500 uppercase ml-1">จำนวนผู้ร่วมทาง (คน) <span className="text-red-500">*</span></Label>
                 <Input type="number" min={1} value={formData.passengers} onChange={(e) => setFormData({ ...formData, passengers: Number(e.target.value) })} className="h-11 rounded-xl bg-white border-slate-200" />
               </div>
+              
               <div className="space-y-1">
                 <Label className="text-xs font-bold text-slate-500 uppercase ml-1">ประเภทรถที่ต้องการ</Label>
-                <Select onValueChange={(v) => setFormData({ ...formData, vehicle_type_preference: v })} value={formData.vehicle_type_preference}>
+                <Select 
+                  onValueChange={(v) => {
+                    setFormData({ ...formData, vehicle_type_preference: v });
+                    setIsOtherVehicle(v === "อื่นๆ");
+                  }} 
+                  value={formData.vehicle_type_preference}
+                >
                   <SelectTrigger className="h-11 rounded-xl border-slate-200 bg-white">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent className="font-sarabun text-black bg-white">
+                  <SelectContent className="font-sarabun text-black bg-white border-slate-200">
                     {vehicleTypes.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
                   </SelectContent>
                 </Select>
+                
+                {isOtherVehicle && (
+                  <Input 
+                    value={otherVehicleText} 
+                    onChange={(e) => setOtherVehicleText(e.target.value)} 
+                    placeholder="โปรดระบุประเภทรถ..." 
+                    className="h-11 rounded-xl bg-white border-slate-300 border-2 mt-2 animate-in fade-in zoom-in-95 duration-200" 
+                    autoFocus
+                  />
+                )}
               </div>
+
             </div>
             <div className="space-y-1">
               <Label className="text-xs font-bold text-slate-500 uppercase ml-1">เบอร์ติดต่อกลับ <span className="text-red-500">*</span></Label>
               <div className="relative group">
                 <Phone className="absolute left-3 top-3.5 size-4 text-slate-400 group-focus-within:text-blue-600 transition-colors" />
-                <Input value={formData.contact_phone} onChange={(e) => setFormData({ ...formData, contact_phone: e.target.value })} placeholder="ชื่อ / เบอร์โทรศัพท์" className="pl-10 h-11 rounded-xl bg-white border-slate-200" />
+                {/* ✅ เปลี่ยนมาเรียกใช้ onChange={handlePhoneChange} เพื่อคัดกรองเฉพาะตัวเลข */}
+                <Input 
+                  type="text"
+                  inputMode="numeric"
+                  value={formData.contact_phone} 
+                  onChange={handlePhoneChange} 
+                  placeholder="กรอกหมายเลขโทรศัพท์ 9-10 หลัก" 
+                  className="pl-10 h-11 rounded-xl bg-white border-slate-200" 
+                />
               </div>
             </div>
           </div>
 
-          {/* 🚘 ฝั่งขวา: แผงตรวจสอบสถานะรถ */}
           <div className="lg:col-span-2 bg-slate-50/50 rounded-2xl border border-slate-200/60 p-4 flex flex-col h-full">
             <div className="flex items-center justify-between mb-4 border-b border-slate-200 pb-3">
               <Label className="font-bold flex items-center gap-2 text-slate-700">
@@ -342,7 +388,7 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initial
         <Button variant="ghost" onClick={onClose} disabled={isSaving} className="w-full sm:w-auto px-10 h-12 rounded-2xl font-bold text-slate-500 hover:bg-slate-100 transition-colors">ยกเลิก</Button>
         <Button 
           onClick={handleSave} 
-          disabled={!formData.purpose || !formData.contact_phone || isSaving}
+          disabled={!formData.purpose || !formData.contact_phone || isSaving || (isOtherVehicle && !otherVehicleText.trim())}
           className="w-full sm:w-auto bg-[#0f172a] hover:bg-slate-800 px-12 h-12 rounded-2xl font-bold text-white shadow-lg transition-all hover:scale-[1.02] disabled:opacity-70 disabled:cursor-not-allowed"
         >
           {isSaving ? (
@@ -355,7 +401,6 @@ function BookingForm({ onClose, onSave, vehicles = [], allBookings = [], initial
     </div>
   )
 }
-
 // --- 4. คอมโพเนนต์แสดง Timeline สถานะ ---
 function BookingTimelineDialog({ booking, onClose }) {
   if (!booking) return null;
@@ -365,9 +410,18 @@ function BookingTimelineDialog({ booking, onClose }) {
     const flow = ['pending_review', 'pending_approval', 'approved', 'in_progress', 'completed'];
     
     if (status === 'rejected') {
-      if (stepName === 'pending_review' || stepName === 'pending_approval') return 'completed'; 
-      if (stepName === 'approved') return 'rejected'; 
-      return 'pending'; 
+      // ❌ กรณีที่ 1: ถูกตีกลับตั้งแต่ขั้นตอนการตรวจสอบ (ยังไม่ได้เลือก/จัดสรรรถยนต์)
+      if (!booking.vehicle_id) {
+        if (stepName === 'pending_review') return 'completed';
+        if (stepName === 'pending_approval') return 'rejected'; 
+        return 'pending';
+      } 
+      // ❌ กรณีที่ 2: จัดสรรรถผ่านแล้ว แต่ผู้มีอำนาจสั่งการกด "ไม่อนุมัติ" 
+      else {
+        if (stepName === 'pending_review' || stepName === 'pending_approval') return 'completed'; 
+        if (stepName === 'approved') return 'rejected'; 
+        return 'pending'; 
+      }
     }
     
     let currentIndex = flow.indexOf(status);
@@ -383,8 +437,22 @@ function BookingTimelineDialog({ booking, onClose }) {
 
   const steps = [
     { id: 'pending_review', title: '1. ส่งคำขอจองรถ', desc: 'ระบบได้รับคำขอของคุณแล้ว อยู่ระหว่างรอเจ้าหน้าที่ตรวจสอบข้อมูล', icon: <FileText className="size-5" /> },
-    { id: 'pending_approval', title: '2. ตรวจสอบ & จัดสรรรถ', desc: 'เจ้าหน้าที่พิจารณาความเหมาะสมและจัดสรรยานพาหนะ/คนขับเรียบร้อย', icon: <ClipboardList className="size-5" /> },
-    { id: 'approved', title: '3. พิจารณาอนุมัติ', desc: booking.status === 'rejected' ? `ไม่อนุมัติคำขอ` : 'ผู้มีอำนาจพิจารณาอนุมัติการเดินทาง', icon: booking.status === 'rejected' ? <XCircle className="size-5" /> : <CheckCircle2 className="size-5" /> },
+    { 
+      id: 'pending_approval', 
+      title: '2. ตรวจสอบ & จัดสรรรถ', 
+      desc: booking.status === 'rejected' && !booking.vehicle_id 
+        ? 'คำขอถูกตีกลับโดยเจ้าหน้าที่ตรวจสอบ' 
+        : 'เจ้าหน้าที่พิจารณาความเหมาะสมและจัดสรรยานพาหนะ/คนขับเรียบร้อย', 
+      icon: booking.status === 'rejected' && !booking.vehicle_id ? <XCircle className="size-5" /> : <ClipboardList className="size-5" /> 
+    },
+    { 
+      id: 'approved', 
+      title: '3. พิจารณาอนุมัติ', 
+      desc: booking.status === 'rejected' && booking.vehicle_id 
+        ? 'คำขอถูกปฏิเสธ ไม่อนุมัติให้เดินทาง' 
+        : 'ผู้มีอำนาจพิจารณาอนุมัติการเดินทาง', 
+      icon: booking.status === 'rejected' && booking.vehicle_id ? <XCircle className="size-5" /> : <CheckCircle2 className="size-5" /> 
+    },
     { id: 'in_progress', title: '4. กำลังเดินทาง', desc: booking.status === 'interrupted' ? 'เกิดเหตุขัดข้อง/รถเสียระหว่างทาง รอการสับเปลี่ยนรถ' : 'พนักงานขับรถเริ่มการเดินทางแล้ว', icon: booking.status === 'interrupted' ? <AlertCircle className="size-5" /> : <Car className="size-5" /> },
     { id: 'completed', title: '5. เสร็จสิ้นภารกิจ', desc: 'พนักงานขับรถส่งรายงานและสิ้นสุดทริปแล้ว', icon: <Flag className="size-5" /> },
   ];
@@ -397,7 +465,7 @@ function BookingTimelineDialog({ booking, onClose }) {
             <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-1">รหัสคำขอ REQ-{booking.id.split('-')[0]}</p>
             <h3 className="text-xl font-extrabold">{booking.destination}</h3>
           </div>
-          <Badge className={cn("px-3 py-1 rounded-full text-xs font-bold", statusMap[booking.status]?.className)}>
+          <Badge className={cn("px-3 py-1 rounded-full text-xs font-bold shadow-sm border", statusMap[booking.status]?.className)}>
             {statusMap[booking.status]?.label}
           </Badge>
         </div>
@@ -414,6 +482,20 @@ function BookingTimelineDialog({ booking, onClose }) {
       </div>
 
       <div className="p-6 md:p-8 flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar relative z-10 bg-slate-50">
+        
+        {booking.status === 'rejected' && booking.reject_reason && (
+          <div className="mb-8 p-4 rounded-2xl bg-rose-50 border border-rose-200 flex gap-3 shadow-sm">
+             <AlertCircle className="size-5 text-rose-600 shrink-0 mt-0.5" />
+             <div>
+                <h4 className="font-bold text-rose-800 text-sm">เหตุผลที่ไม่อนุมัติ / ตีกลับ:</h4>
+                <p className="text-rose-600 text-sm mt-1 leading-relaxed font-medium">{booking.reject_reason}</p>
+                <span className="inline-block mt-2 px-2 py-0.5 bg-rose-100/50 border border-rose-200 rounded-md text-[10px] text-rose-500 font-bold">
+                  โดย {booking.vehicle_id ? 'ผู้พิจารณาอนุมัติ' : 'เจ้าหน้าที่ตรวจสอบคำขอ'}
+                </span>
+             </div>
+          </div>
+        )}
+
         <h4 className="font-bold text-slate-800 mb-8 flex items-center gap-2">
           <Info className="size-5 text-blue-600" /> ลำดับสถานะการดำเนินการ
         </h4>
@@ -468,6 +550,60 @@ function BookingTimelineDialog({ booking, onClose }) {
   )
 }
 
+// --- 4.5 คอมโพเนนต์แสดงรายละเอียดคำขอ (BookingDetailDialog) ---
+function BookingDetailDialog({ booking, onClose }) {
+  if (!booking) return null;
+
+  const Row = ({ label, value, full = false }) => (
+    <div className={full ? "col-span-2" : ""}>
+      <p className="text-[10px] uppercase font-bold tracking-wider text-slate-400">{label}</p>
+      <p className="text-sm font-semibold text-slate-800 mt-0.5">{value || "-"}</p>
+    </div>
+  );
+
+  return (
+    <div className="font-sarabun text-black flex flex-col max-h-[85vh] bg-white rounded-[2.5rem] overflow-hidden">
+      <div className="bg-[#0f172a] p-6 md:p-8 text-white shrink-0 relative">
+        <p className="text-xs text-blue-400 font-bold tracking-widest uppercase mb-1 pr-10">รหัสคำขอ REQ-{booking.id.split('-')[0]}</p>
+        <h3 className="text-xl font-extrabold flex items-center gap-2 pr-10">
+          <ClipboardCheck className="size-5 text-blue-300" /> รายละเอียดคำขอจองรถ
+        </h3>
+        <button
+          onClick={onClose}
+          className="absolute right-6 top-6 flex items-center justify-center text-white/80 hover:text-white bg-white/10 hover:bg-white/20 p-2 rounded-xl transition-all"
+          title="ปิดหน้าต่าง"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+
+      <div className="p-6 md:p-8 flex-1 overflow-y-auto custom-scrollbar space-y-6 bg-slate-50">
+        <div className="bg-white rounded-2xl border border-slate-200/60 p-5 grid grid-cols-2 gap-5 shadow-sm">
+          <Row label="ผู้ขอใช้รถ" value={booking.user_name} />
+          <Row label="ตำแหน่ง" value={booking.position} />
+          <Row label="สังกัดหน่วยงาน" value={booking.department} full />
+          <Row label="วัตถุประสงค์การใช้รถ" value={booking.purpose} full />
+          <Row label="รายละเอียดภารกิจ" value={booking.duty_details} full />
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200/60 p-5 grid grid-cols-2 gap-5 shadow-sm">
+          <Row label="วันที่เริ่ม" value={`${formatThaiDate(booking.start_date)} (${formatThaiTime(booking.start_time)})`} />
+          <Row label="วันที่สิ้นสุด" value={`${formatThaiDate(booking.end_date)} (${formatThaiTime(booking.end_time)})`} />
+          <Row label="ต้นทาง" value={booking.origin} />
+          <Row label="ปลายทาง" value={booking.destination} />
+        </div>
+
+        <div className="bg-white rounded-2xl border border-slate-200/60 p-5 grid grid-cols-2 gap-5 shadow-sm">
+          <Row label="จำนวนผู้โดยสาร" value={`${booking.passengers} คน`} />
+          <Row label="ประเภทรถที่ต้องการ" value={booking.vehicle_type_preference} />
+          <Row label="เบอร์ติดต่อกลับ" value={booking.contact_phone} />
+          <Row label="รถที่จัดสรร" value={booking.vehicles?.license_plate || "รอการจัดสรร"} />
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // --- 5. หน้าหลัก (BookingsPage) ---
 export default function BookingsPage() {
   const { user } = useAuth(); 
@@ -477,18 +613,18 @@ export default function BookingsPage() {
   const [search, setSearch] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
   
-  // 🛡️ สถานะสำหรับเปิด Dialog และเก็บข้อมูลที่จะแก้ไข
   const [createOpen, setCreateOpen] = useState(false)
   const [editingBooking, setEditingBooking] = useState(null)
   
   const [isLoading, setIsLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
   const [viewBooking, setViewBooking] = useState(null)
+  // ✅ state ใหม่: เก็บข้อมูลคำขอที่กำลังจะดูรายละเอียด
+  const [detailBooking, setDetailBooking] = useState(null)
 
   useEffect(() => { loadData() }, [user]) 
 
   async function loadData() {
-    // 1. ถ้ายังไม่มี user ให้หยุดรอก่อน
     if (!user) {
       return; 
     }
@@ -497,12 +633,13 @@ export default function BookingsPage() {
     setFetchError(null);
 
     try {
-      // 🛑 [จุดแก้ปัญหา เพิ่มบรรทัดนี้เข้าไปเลยครับ!] 🛑
-      // บังคับให้ระบบ "รอ" จนกว่า Supabase จะโหลด Session หลังบ้านเสร็จสมบูรณ์
       await supabase.auth.getSession();
 
-      // ... (โค้ดดึงข้อมูลเดิมของคุณทั้งหมดให้อยู่ต่อจากนี้) ...
-      let query = supabase.from("bookings").select("*, vehicles(license_plate, brand, model)").order("created_at", { ascending: false }).limit(50);
+      let query = supabase
+        .from("bookings")
+        .select("*, vehicles(license_plate, brand, model)")
+        .order("created_at", { ascending: false })
+        .limit(50); 
 
       if (user.role === "user") {
         query = query.eq("user_id", user.id);
@@ -513,8 +650,6 @@ export default function BookingsPage() {
         supabase.from("vehicles").select("id, license_plate, brand, model, status, seats")
       ];
       
-     
-
       if (user?.id && !userProfile) {
         promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
       }
@@ -536,44 +671,37 @@ export default function BookingsPage() {
     }
   }
 
-  // 🛡️ ฟังก์ชันเปิด Dialog แบบสร้างใหม่
   const handleOpenCreate = () => {
     setEditingBooking(null);
     setCreateOpen(true);
   }
 
-  // 🛡️ ฟังก์ชันเปิด Dialog แบบแก้ไข
   const handleOpenEdit = (booking) => {
     setEditingBooking(booking);
     setCreateOpen(true);
   }
 
- // 🛡️ เปลี่ยนมาใช้ Supabase ยิงตรงจากหน้าบ้าน (ไม่ต้องง้อโฟลเดอร์ /api)
   async function saveBooking(data) {
     if (!user) return;
     
     try {
       const isEditing = !!data.id; 
       
-      // 1. คลีนข้อมูลก่อนส่ง: ลบ object vehicles ที่ติดมาจากการ Join ก่อนหน้า
       const payload = { ...data };
       delete payload.vehicles; 
 
-      // 2. บังคับใส่ค่าเริ่มต้นที่สำคัญ (DevSecOps)
-      payload.status = 'pending_review'; // บังคับกลับไปรอตรวจสอบเสมอ
-      payload.user_id = user.id;         // ยัด ID ของคนจองใส่เข้าไปด้วย
+      payload.status = 'pending_review'; 
+      payload.user_id = user.id;        
 
       let result;
 
       if (isEditing) {
-        // ✏️ โหมดแก้ไข (UPDATE)
         result = await supabase
           .from("bookings")
           .update(payload)
           .eq("id", payload.id)
-          .eq("user_id", user.id); // ป้องกันคนอื่นมาแอบแก้ใบจองที่ไม่ใช่ของตัวเอง
+          .eq("user_id", user.id); 
       } else {
-        // 🆕 โหมดสร้างใหม่ (INSERT)
         result = await supabase
           .from("bookings")
           .insert([payload])
@@ -582,7 +710,6 @@ export default function BookingsPage() {
       }
   
       if (!result.error) {
-        // บันทึกประวัติการกระทำลง Audit Log
         await supabase.from('audit_logs').insert([{
           user_id: user.id,
           user_name: userProfile?.full_name || user.email,
@@ -600,7 +727,7 @@ export default function BookingsPage() {
           timer: 2000, 
           showConfirmButton: false 
         });
-        loadData(); // โหลดตารางใหม่
+        loadData(); 
       } else {
         throw new Error(result.error.message || 'ไม่สามารถบันทึกข้อมูลได้');
       }
@@ -686,7 +813,7 @@ export default function BookingsPage() {
               <SelectTrigger className="w-[180px] h-12 rounded-2xl border-none shadow-sm bg-white text-black font-bold">
                 <SelectValue placeholder="ทุกสถานะ" />
               </SelectTrigger>
-              <SelectContent className="font-sarabun text-black bg-white">
+              <SelectContent className="font-sarabun text-black bg-white border-slate-200">
                 <SelectItem value="all">สถานะทั้งหมด</SelectItem>
                 <SelectItem value="pending_review">รอตรวจสอบ</SelectItem>
                 <SelectItem value="pending_approval">รอพิจารณา</SelectItem>
@@ -713,7 +840,9 @@ export default function BookingsPage() {
             open={createOpen} 
             onOpenChange={(open) => {
               setCreateOpen(open);
-              if (!open) setEditingBooking(null); // เคลียร์ข้อมูลตอนปิด Popup
+              if (!open) {
+                setEditingBooking(null); 
+              }
             }}
           >
             <DialogTrigger asChild>
@@ -721,12 +850,25 @@ export default function BookingsPage() {
                 <Car className="mr-2 size-5" /> จองรถยนต์ใหม่
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-6xl p-0 rounded-[2.5rem] border-none overflow-hidden bg-white shadow-2xl text-black">
-              <DialogHeader className="bg-[#0f172a] p-8 text-white">
+            <DialogContent 
+              className="sm:max-w-6xl p-0 rounded-[2.5rem] border-none overflow-hidden bg-white shadow-2xl text-black"
+              // ป้องกัน Focus Trap ขัดขวางการพิมพ์ในช่อง Input
+              onPointerDownOutside={(e) => e.preventDefault()}
+              onInteractOutside={(e) => e.preventDefault()}
+              onFocusOutside={(e) => e.preventDefault()}
+            >
+              <DialogHeader className="bg-[#0f172a] p-8 text-white relative">
                 <DialogTitle className="text-2xl font-bold text-center tracking-tight">
                   {editingBooking ? 'แก้ไขใบขออนุญาตใช้รถส่วนกลาง' : 'ใบขออนุญาตใช้รถส่วนกลาง (แบบ ๓)'}
                 </DialogTitle>
                 <DialogDescription className="hidden">แบบฟอร์มกรอกรายละเอียด</DialogDescription>
+                <button
+                  onClick={() => { setCreateOpen(false); setEditingBooking(null); }}
+                  className="absolute right-6 top-1/2 -translate-y-1/2 flex items-center gap-1.5 text-white/80 hover:text-white bg-white/10 hover:bg-white/20 px-3 py-2 rounded-xl transition-all font-bold"
+                >
+                  <span className="text-sm hidden sm:inline">ปิด</span>
+                  <XCircle className="size-4" />
+                </button>
               </DialogHeader>
               <div className="px-10 pb-4 pt-2">
                 <BookingForm 
@@ -734,7 +876,7 @@ export default function BookingsPage() {
                   onSave={saveBooking} 
                   vehicles={vehicles} 
                   allBookings={bookings} 
-                  initialData={editingBooking} // ส่งข้อมูลที่จะแก้ไขเข้าไป
+                  initialData={editingBooking} 
                 />
               </div>
             </DialogContent>
@@ -746,23 +888,21 @@ export default function BookingsPage() {
             <Table>
               <TableHeader className="bg-slate-50/80">
                 <TableRow className="border-b border-slate-200/50">
-                  <TableHead className="pl-6 py-5 font-bold text-slate-500 uppercase text-[11px] tracking-widest">เลขที่</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">ผู้ขอ</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">หน่วยงาน</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">วัตถุประสงค์</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">เริ่ม</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest">สิ้นสุด</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">ผู้โดยสาร</TableHead>
-                  <TableHead className="font-bold text-slate-500 uppercase text-[11px] tracking-widest text-center">สถานะ</TableHead>
-                  <TableHead className="pr-6 text-right font-bold text-slate-500 uppercase text-[11px] tracking-widest">จัดการ</TableHead>
+                  <TableHead className="pl-6 py-5 font-bold text-slate-700 uppercase text-[11px] tracking-widest">เลขที่</TableHead>
+                  <TableHead className="font-bold text-slate-700 uppercase text-[11px] tracking-widest">ผู้ขอ</TableHead>
+                  <TableHead className="font-bold text-slate-700 uppercase text-[11px] tracking-widest">หน่วยงาน</TableHead>
+                  <TableHead className="font-bold text-slate-700 uppercase text-[11px] tracking-widest">เริ่ม</TableHead>
+                  <TableHead className="font-bold text-slate-700 uppercase text-[11px] tracking-widest">สิ้นสุด</TableHead>
+                  <TableHead className="font-bold text-slate-700 uppercase text-[11px] tracking-widest text-center">สถานะ</TableHead>
+                  <TableHead className="pr-6 text-right font-bold text-slate-700 uppercase text-[11px] tracking-widest">จัดการ</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {isLoading ? (
-                  <TableRow><TableCell colSpan={9} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />กำลังโหลดข้อมูล...</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="h-48 text-center"><Loader2 className="animate-spin mx-auto mb-2 text-blue-600 size-6" />กำลังโหลดข้อมูล...</TableCell></TableRow>
                 ) : fetchError ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="h-48 text-center bg-rose-50/50">
+                    <TableCell colSpan={7} className="h-48 text-center bg-rose-50/50">
                       <div className="flex flex-col items-center justify-center p-4">
                         <AlertCircle className="mb-3 text-rose-500 size-10 animate-bounce" />
                         <p className="text-rose-800 font-extrabold text-lg mb-1">พบปัญหาการเชื่อมต่อฐานข้อมูล</p>
@@ -774,7 +914,7 @@ export default function BookingsPage() {
                     </TableCell>
                   </TableRow>
                 ) : filtered.length === 0 ? (
-                  <TableRow><TableCell colSpan={9} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
+                  <TableRow><TableCell colSpan={7} className="h-48 text-center text-slate-400 italic">ไม่พบประวัติการจอง</TableCell></TableRow>
                 ) : filtered.map((b) => (
                   <TableRow key={b.id} className="hover:bg-blue-50/50 transition-colors border-b border-slate-100/50 group">
                     <TableCell className="pl-6 font-mono text-xs font-bold text-slate-500 uppercase">
@@ -786,30 +926,39 @@ export default function BookingsPage() {
                     <TableCell className="max-w-[120px]">
                       <p className="text-[11px] text-slate-600 truncate">{b.department || "-"}</p>
                     </TableCell>
-                    <TableCell className="max-w-[150px]">
-                      <p className="text-xs text-slate-600 truncate">{b.purpose || "-"}</p>
-                    </TableCell>
+
                     <TableCell>
                       <p className="text-[11px] font-medium text-slate-700">{formatThaiDate(b.start_date)}</p>
                       <p className="text-[10px] text-blue-600 font-bold">{formatThaiTime(b.start_time)}</p>
                     </TableCell>
                     <TableCell>
                       <p className="text-[11px] font-medium text-slate-700">{formatThaiDate(b.end_date)}</p>
-                      <p className="text-[10px] text-rose-600 font-bold">{formatThaiTime(b.end_time)}</p>
+                      <p className="text-[10px] text-slate-500 font-bold">{formatThaiTime(b.end_time)}</p>
                     </TableCell>
-                    <TableCell className="text-center font-bold text-slate-700 text-xs">
-                      {b.passengers}
-                    </TableCell>
+
+                    {/* ✅ คอลัมน์สถานะ: Badge + ปุ่มดูไทม์ไลน์ (Eye) อยู่ด้วยกัน */}
                     <TableCell className="text-center">
-                      <Badge className={cn("px-3 py-0.5 rounded-full text-[9px] font-bold border shadow-sm", statusMap[b.status]?.className)}>
-                        {statusMap[b.status]?.label}
-                      </Badge>
+                      <div className="flex items-center justify-center gap-1.5">
+                        <Badge className={cn("px-3 py-0.5 rounded-full text-[9px] font-bold border shadow-sm", statusMap[b.status]?.className)}>
+                          {statusMap[b.status]?.label}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => setViewBooking(b)}
+                          className="text-blue-500 hover:bg-blue-100 hover:text-blue-700 rounded-lg h-6 w-6 transition-colors"
+                          title="ดูไทม์ไลน์สถานะ"
+                        >
+                          <Eye className="size-3.5" />
+                        </Button>
+                      </div>
                     </TableCell>
+
+                    {/* ✅ คอลัมน์จัดการ: แก้ไข / ดูรายละเอียด (Info ใหม่) / ลบ */}
                     <TableCell className="pr-6 text-right">
-                      <div className="flex justify-end gap-1 opacity-60 group-hover:opacity-100 transition-opacity">
+                      <div className="flex justify-end gap-1">
                         
-                        {/* 🛡️ ปุ่มแก้ไข (แสดงเฉพาะสถานะรอตรวจสอบ หรือ ถูกตีกลับ) */}
-                        {(b.status === 'pending_review' || b.status === 'rejected') && (
+                        {b.status === 'pending_review' && (
                           <Button 
                             variant="ghost" 
                             size="icon" 
@@ -824,20 +973,18 @@ export default function BookingsPage() {
                         <Button 
                           variant="ghost" 
                           size="icon" 
-                          onClick={() => setViewBooking(b)} 
-                          className="text-blue-500 hover:bg-blue-100 hover:text-blue-700 rounded-xl h-9 w-9 transition-colors"
-                          title="ดูสถานะคำขอ"
+                          onClick={() => setDetailBooking(b)} 
+                          className="text-slate-500 hover:bg-slate-100 hover:text-slate-700 rounded-xl h-9 w-9 transition-colors"
+                          title="ดูรายละเอียดคำขอ"
                         >
-                          <Eye className="size-4" />
+                          <ClipboardCheck className="size-4" />
                         </Button>
 
-                        {/* 🛡️ ปุ่มลบ (แสดงเฉพาะสถานะรอตรวจสอบ) */}
                         {b.status === 'pending_review' && (
                           <Button variant="ghost" size="icon" onClick={() => handleDelete(b.id)} className="text-rose-500 hover:bg-rose-100 hover:text-rose-700 rounded-xl h-9 w-9 transition-colors">
                             <Trash2 className="size-4" />
                           </Button>
                         )}
-
                       </div>
                     </TableCell>
                   </TableRow>
@@ -847,13 +994,25 @@ export default function BookingsPage() {
           </CardContent>
         </Card>
 
+        {/* Dialog: ไทม์ไลน์สถานะ */}
         <Dialog open={!!viewBooking} onOpenChange={(open) => !open && setViewBooking(null)}>
-          <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col rounded-[2.5rem] border-none bg-transparent shadow-2xl p-0 overflow-hidden">
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col rounded-[2.5rem] border-none bg-transparent shadow-2xl p-0 overflow-hidden [&>button]:hidden">
             <DialogHeader className="hidden">
               <DialogTitle>สถานะคำขอ</DialogTitle>
               <DialogDescription>ดูรายละเอียดสถานะและไทม์ไลน์ของการจอง</DialogDescription>
             </DialogHeader>
             <BookingTimelineDialog booking={viewBooking} onClose={() => setViewBooking(null)} />
+          </DialogContent>
+        </Dialog>
+
+        {/* ✅ Dialog ใหม่: รายละเอียดคำขอ */}
+        <Dialog open={!!detailBooking} onOpenChange={(open) => !open && setDetailBooking(null)}>
+          <DialogContent className="sm:max-w-2xl max-h-[90vh] flex flex-col rounded-[2.5rem] border-none bg-transparent shadow-2xl p-0 overflow-hidden [&>button]:hidden">
+            <DialogHeader className="hidden">
+              <DialogTitle>รายละเอียดคำขอ</DialogTitle>
+              <DialogDescription>ดูรายละเอียดทั้งหมดของคำขอจองรถ</DialogDescription>
+            </DialogHeader>
+            <BookingDetailDialog booking={detailBooking} onClose={() => setDetailBooking(null)} />
           </DialogContent>
         </Dialog>
 

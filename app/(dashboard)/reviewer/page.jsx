@@ -33,7 +33,6 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { cn } from "@/lib/utils"
-import { isBefore, parse } from "date-fns"
 import { supabase } from "@/lib/supabase"
 import { useAuth } from "@/lib/auth-context"
 import Swal from 'sweetalert2'
@@ -54,38 +53,67 @@ const formatThaiTime = (timeString) => {
 };
 
 // --- ส่วนที่ 1: ป๊อปอัปตรวจสอบและพิจารณา (แบบมีพรีวิวเอกสาร) ---
-function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose, onApprove, onReject, userProfile }) {
+function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose, onApprove, onReject, userProfile, isReadOnly }) {
   const documentRef = useRef(null);
   
-  // Mobile tab state
-  const [mobileTab, setMobileTab] = useState("review"); // "review" | "preview"
+  // ✅ ล็อกขนาด A4 ให้ตรงกับสเกลหน้าผู้อนุมัติเป๊ะๆ 100%
+  const A4_WIDTH_PX = 794;
+  const A4_HEIGHT_PX = 1123;
+
+  const [mobileTab, setMobileTab] = useState("review"); 
+  const [allocationMode, setAllocationMode] = useState(booking?.status === 'rejected' ? "reject" : "approve");
   
-  const [allocationMode, setAllocationMode] = useState("approve");
   const [allocationData, setAllocationData] = useState({
-    vehicle_id: "",
-    driver_id: "",
-    reject_reason: ""
+    vehicle_id: booking?.vehicle_id || "",
+    driver_id: booking?.driver_id || "",
+    reject_reason: booking?.reject_reason || ""
   });
+  
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handlePrint = useReactToPrint({
     contentRef: documentRef,
     documentTitle: `ใบขออนุญาตใช้รถ_${booking.user_name}`,
+    pageStyle: `
+      @page {
+        size: A4 portrait;
+        margin: 0;
+      }
+      body {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+      }
+    `,
   });
 
-  const checkVehicleAvailability = (vehicleId, currentBooking) => {
-    if (!currentBooking) return false;
-    const startReq = parse(`${currentBooking.start_date} ${currentBooking.start_time}`, 'yyyy-MM-dd HH:mm', new Date());
-    const endReq = parse(`${currentBooking.end_date} ${currentBooking.end_time}`, 'yyyy-MM-dd HH:mm', new Date());
+  const checkResourceAvailability = (resourceId, type, currentBooking) => {
+    if (!currentBooking || !resourceId) return false;
+
+    const getSafeDate = (dateStr, timeStr) => {
+      if (!dateStr || !timeStr) return new Date(0);
+      const safeTime = timeStr.substring(0, 5);
+      return new Date(`${dateStr}T${safeTime}:00`);
+    };
+
+    const reqStart = getSafeDate(currentBooking.start_date, currentBooking.start_time);
+    const reqEnd = getSafeDate(currentBooking.end_date, currentBooking.end_time);
 
     const conflict = allBookings.find(b => {
-      if (b.id === currentBooking.id || b.vehicle_id !== vehicleId) return false;
+      if (String(b.id) === String(currentBooking.id)) return false;
+
+      const isTargetResource = type === 'vehicle' 
+        ? String(b.vehicle_id) === String(resourceId) 
+        : String(b.driver_id) === String(resourceId);
+
+      if (!isTargetResource) return false;
       if (b.status === 'rejected' || b.status === 'completed') return false;
 
-      const bStart = parse(`${b.start_date} ${b.start_time}`, 'yyyy-MM-dd HH:mm', new Date());
-      const bEnd = parse(`${b.end_date} ${b.end_time}`, 'yyyy-MM-dd HH:mm', new Date());
-      return isBefore(startReq, bEnd) && isBefore(bStart, endReq);
+      const bStart = getSafeDate(b.start_date, b.start_time);
+      const bEnd = getSafeDate(b.end_date, b.end_time);
+      
+      return (reqStart < bEnd) && (bStart < reqEnd);
     });
+
     return !conflict;
   };
 
@@ -111,15 +139,12 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
     }
   };
 
-  // ดึงชื่อและทะเบียนเพื่อไปโชว์ในพรีวิวแบบ Real-time (ใช้ .name จากตาราง drivers)
   const selectedDriverName = drivers.find(d => d.id === allocationData.driver_id)?.name || ".......................................................";
   const selectedVehiclePlate = vehicles.find(v => v.id === allocationData.vehicle_id)?.license_plate || "........................";
   const selectedVehicleMileage = vehicles.find(v => v.id === allocationData.vehicle_id)?.last_mileage;
 
-  // ── แผงจัดการ (ซ้าย) ──
   const ReviewPanel = (
     <div className="space-y-5 pb-6">
-      {/* ข้อมูลผู้ขอ */}
       <div className="grid grid-cols-2 gap-4 bg-slate-900 p-5 rounded-2xl text-white shadow-md">
         <div className="space-y-1">
           <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">ผู้ขอใช้รถ</p>
@@ -136,7 +161,6 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
         </div>
       </div>
 
-      {/* ข้อมูลการเดินทาง */}
       <div className="bg-white p-4 rounded-2xl border border-slate-200 shadow-sm space-y-3">
         <div className="flex items-start gap-3">
           <MapPin className="size-4 text-rose-500 shrink-0 mt-0.5" />
@@ -170,19 +194,21 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
         </div>
       </div>
 
-      {/* แผงตัดสินใจ */}
       <div className="space-y-4">
         <h4 className="font-bold text-sm text-slate-800 flex items-center gap-2">
           <ClipboardList className="size-4 text-emerald-600" /> การตัดสินใจตรวจสอบ
         </h4>
-        <div className="flex gap-3 bg-slate-100 p-1 rounded-2xl">
+        
+        <div className={cn("flex gap-3 bg-slate-100 p-1 rounded-2xl", isReadOnly && "pointer-events-none opacity-80")}>
           <button 
+            disabled={isReadOnly}
             onClick={() => setAllocationMode("approve")}
             className={cn("flex-1 py-2.5 rounded-xl text-sm font-bold transition-all", allocationMode === "approve" ? "bg-white text-emerald-700 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-700")}
           >
             ผ่าน & จัดสรรรถ
           </button>
           <button 
+            disabled={isReadOnly}
             onClick={() => setAllocationMode("reject")}
             className={cn("flex-1 py-2.5 rounded-xl text-sm font-bold transition-all", allocationMode === "reject" ? "bg-white text-rose-700 shadow-sm border border-slate-200" : "text-slate-500 hover:text-slate-700")}
           >
@@ -194,13 +220,13 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
           <div className="space-y-4 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
             <div className="space-y-2">
               <Label className="font-bold text-blue-900 flex items-center gap-2"><Car className="size-4"/> เลือกรถยนต์</Label>
-              <Select value={allocationData.vehicle_id} onValueChange={(v) => setAllocationData({...allocationData, vehicle_id: v})}>
+              <Select disabled={isReadOnly} value={allocationData.vehicle_id} onValueChange={(v) => setAllocationData({...allocationData, vehicle_id: v})}>
                 <SelectTrigger className="h-11 rounded-xl bg-white border-blue-200 focus:ring-blue-500 font-bold text-slate-700">
                   <SelectValue placeholder="-- เลือกรถยนต์ --" />
                 </SelectTrigger>
                 <SelectContent className="bg-white font-sarabun border-slate-200">
                   {vehicles.map(v => {
-                    const isAvail = checkVehicleAvailability(v.id, booking);
+                    const isAvail = isReadOnly ? true : checkResourceAvailability(v.id, 'vehicle', booking);
                     return (
                       <SelectItem key={v.id} value={v.id} disabled={!isAvail} className={cn("font-bold", !isAvail && "opacity-50")}>
                         {v.license_plate} - {v.brand} ({v.seats} ที่นั่ง) {!isAvail && "❌ ติดภารกิจ"}
@@ -213,7 +239,7 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
 
             <div className="space-y-2">
               <Label className="font-bold text-blue-900 flex items-center gap-2"><UserPlus className="size-4"/> เลือกพนักงานขับรถ</Label>
-              <Select value={allocationData.driver_id} onValueChange={(v) => setAllocationData({...allocationData, driver_id: v})}>
+              <Select disabled={isReadOnly} value={allocationData.driver_id} onValueChange={(v) => setAllocationData({...allocationData, driver_id: v})}>
                 <SelectTrigger className="h-11 rounded-xl bg-white border-blue-200 focus:ring-blue-500 font-bold text-slate-700">
                   <SelectValue placeholder="-- เลือกพนักงานขับรถ --" />
                 </SelectTrigger>
@@ -221,11 +247,14 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
                   {drivers.length === 0 ? (
                     <SelectItem value="none" disabled>ไม่มีพนักงานขับรถว่างในขณะนี้</SelectItem>
                   ) : (
-                    drivers.map((driver) => (
-                      <SelectItem key={driver.id} value={driver.id} className="font-bold">
-                        {driver.name} (โทร: {driver.phone || '-'})
-                      </SelectItem>
-                    ))
+                    drivers.map((driver) => {
+                      const isDriverAvail = isReadOnly ? true : checkResourceAvailability(driver.id, 'driver', booking);
+                      return (
+                        <SelectItem key={driver.id} value={driver.id} disabled={!isDriverAvail} className={cn("font-bold", !isDriverAvail && "opacity-50")}>
+                          {driver.name} (โทร: {driver.phone || '-'}) {!isDriverAvail && "❌ ติดภารกิจ"}
+                        </SelectItem>
+                      )
+                    })
                   )}
                 </SelectContent>
               </Select>
@@ -235,6 +264,7 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
           <div className="space-y-2 bg-rose-50/50 p-4 rounded-2xl border border-rose-100">
             <Label className="font-bold text-rose-800">เหตุผลที่ตีกลับ <span className="text-red-500">*</span></Label>
             <Textarea 
+              disabled={isReadOnly}
               rows={4}
               placeholder="ระบุเหตุผลให้ผู้ขอทราบ..."
               value={allocationData.reject_reason}
@@ -247,24 +277,27 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
 
       <div className="flex gap-3 pt-2">
         <Button variant="ghost" onClick={onClose} className="flex-1 text-slate-500 bg-slate-100 hover:bg-slate-200 font-bold h-12 rounded-2xl">
-          ยกเลิก
+          {isReadOnly ? "ปิดหน้าต่าง" : "ยกเลิก"}
         </Button>
-        <Button 
-          onClick={handleAction} disabled={isSubmitting}
-          className={cn("flex-1 font-bold h-12 rounded-2xl text-white shadow-lg transition-all", allocationMode === "approve" ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-rose-600 hover:bg-rose-700 shadow-rose-200")}
-        >
-          {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin"/>}
-          <CheckCircle2 className="mr-2 size-4" /> 
-          {allocationMode === "approve" ? "ยืนยันจัดสรรรถ" : "ยืนยันตีกลับ"}
-        </Button>
+        
+        {!isReadOnly && (
+          <Button 
+            onClick={handleAction} disabled={isSubmitting}
+            className={cn("flex-1 font-bold h-12 rounded-2xl text-white shadow-lg transition-all", allocationMode === "approve" ? "bg-emerald-600 hover:bg-emerald-700 shadow-emerald-200" : "bg-rose-600 hover:bg-rose-700 shadow-rose-200")}
+          >
+            {isSubmitting && <Loader2 className="mr-2 size-4 animate-spin"/>}
+            <CheckCircle2 className="mr-2 size-4" /> 
+            {allocationMode === "approve" ? "ยืนยันจัดสรรรถ" : "ยืนยันตีกลับ"}
+          </Button>
+        )}
       </div>
     </div>
   );
 
-  // ── แผงพรีวิวเอกสาร (ขวา) ──
+  // ✅ ปรับ PreviewPanel ให้ล็อกขนาดและมี Layout เหมือนผู้อนุมัติ
   const PreviewPanel = (
-    <div className="flex-1 min-h-0 bg-slate-100 rounded-2xl p-4 overflow-y-auto border border-slate-200">
-      <div className="flex items-center justify-between mb-4 sticky top-0 bg-slate-100/95 backdrop-blur-sm z-10 py-1">
+    <div className="flex-1 min-h-0 bg-slate-100 rounded-2xl p-4 overflow-y-auto overflow-x-auto border border-slate-200 custom-scrollbar relative">
+      <div className="flex items-center justify-between mb-4 sticky top-0 left-0 bg-slate-100/95 backdrop-blur-sm z-50 py-1 min-w-[210mm]">
         <h3 className="font-bold text-slate-700 flex items-center gap-2 text-sm">
           <Info className="size-4 text-blue-500" /> พรีวิวเอกสาร (แบบ ๓)
         </h3>
@@ -272,23 +305,37 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
           <Printer className="size-3.5 mr-1.5" /> พิมพ์
         </Button>
       </div>
-      <div ref={documentRef} className="print-container overflow-hidden rounded-xl bg-white shadow-sm border border-slate-200">
-        <Form3Document
-          booking={booking}
-          driverName={selectedDriverName}
-          vehiclePlate={selectedVehiclePlate}
-          signatureImage={null} // Reviewer ยังไม่ต้องเซ็น
-          adminName={userProfile?.full_name || userProfile?.name}
-          startMileage={selectedVehicleMileage}
-        />
+
+      <div className="w-full flex justify-center pb-8 overflow-auto">
+        <div 
+          ref={documentRef} 
+          className="print-container relative bg-white shadow-xl border border-slate-200 select-none overflow-hidden print:shadow-none print:border-none print:m-0 print:p-0 shrink-0"
+          style={{
+            width: `${A4_WIDTH_PX}px`,
+            height: `${A4_HEIGHT_PX}px`,
+            minWidth: `${A4_WIDTH_PX}px`,
+            minHeight: `${A4_HEIGHT_PX}px`,
+          }}
+        >
+          <Form3Document
+            booking={booking}
+            driverName={selectedDriverName}
+            vehiclePlate={selectedVehiclePlate}
+            signatureImage={null} 
+            adminName={userProfile?.full_name || userProfile?.name}
+            startMileage={selectedVehicleMileage}
+          />
+        </div>
       </div>
     </div>
   );
 
   return (
-    <div className="font-sarabun text-black bg-white h-full flex flex-col lg:flex-row gap-0 lg:gap-6">
-      {/* ════ MOBILE layout: tab switcher ════ */}
-      <div className="flex flex-col h-full lg:hidden w-full">
+    // ✅ เพิ่ม min-h-0 เพื่อให้การแบ่งคอลัมน์ไม่ทะลุกรอบ
+    <div className="font-sarabun text-black bg-white h-full w-full flex flex-col lg:flex-row gap-0 lg:gap-6 min-h-0">
+      
+      {/* Mobile View */}
+      <div className="flex flex-col h-full lg:hidden w-full min-h-0">
         <div className="flex bg-slate-100 p-1 rounded-2xl gap-1 mb-4 shrink-0">
           <button
             type="button"
@@ -305,53 +352,62 @@ function ReviewDialogContent({ booking, vehicles, drivers, allBookings, onClose,
             <FileText className="size-4" /> พรีวิวเอกสาร
           </button>
         </div>
-        <div className="flex-1 overflow-y-auto pb-4">
+        <div className="flex-1 overflow-y-auto pb-4 custom-scrollbar min-h-0">
           {mobileTab === "review" ? ReviewPanel : PreviewPanel}
         </div>
       </div>
 
-      {/* ════ DESKTOP layout: side by side ════ */}
-      <div className="hidden lg:flex w-[400px] shrink-0 h-full overflow-y-auto pr-2 scrollbar-hide flex-col">
+      {/* Desktop View (แยก Scroll อิสระ) */}
+      <div className="hidden lg:flex w-[400px] shrink-0 h-full overflow-y-auto pr-2 pb-4 custom-scrollbar flex-col">
         {ReviewPanel}
       </div>
-      <div className="hidden lg:flex flex-1 h-full flex-col">
+      <div className="hidden lg:flex flex-1 h-full min-w-0 flex-col">
         {PreviewPanel}
       </div>
     </div>
   );
 }
 
-
 // --- ส่วนที่ 2: หน้าหลัก (ReviewerBookingsPage) ---
 export default function ReviewerBookingsPage() {
   const { user } = useAuth();
   const [userProfile, setUserProfile] = useState(null)
   
-  // Data States
   const [bookings, setBookings] = useState([]);
   const [allBookings, setAllBookings] = useState([]);
   const [vehicles, setVehicles] = useState([]);
   const [drivers, setDrivers] = useState([]);
   
-  // UI States
   const [isLoading, setIsLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [activeTab, setActiveTab] = useState("pending"); 
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
 
-  useEffect(() => { loadData(); }, [user]);
+  useEffect(() => {
+    if (!user) return;
+    loadData();
+
+    const channel = supabase
+      .channel('reviewer-bookings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+         loadData(); 
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
+  }, [user]);
 
   async function loadData() {
     if (!user) return;
     setIsLoading(true);
     try {
+      await supabase.auth.getSession();
+
       const promises = [
-        // ลบการ Join ตารางคนขับออกจาก bookings เพื่อป้องกันปัญหา Foreign Key
         supabase.from("bookings").select("*, vehicles(license_plate)").order("created_at", { ascending: false }),
-        supabase.from("vehicles").select("*").eq("status", "available"),
-        // ดึงข้อมูลคนขับจากตาราง drivers (ใช้คอลัมน์ name)
-        supabase.from("drivers").select("id, name, phone, status").in("status", ["ว่าง", "available"]),
+        supabase.from("vehicles").select("*"), 
+        supabase.from("drivers").select("id, name, phone, status"), 
         supabase.from('profiles').select('*').eq('id', user.id).single()
       ];
 
@@ -363,12 +419,7 @@ export default function ReviewerBookingsPage() {
       setBookings(bRes.data || []);
       setAllBookings(bRes.data || []);
       setVehicles(vRes.data || []);
-      
-      if (!dRes.error && dRes.data) {
-         setDrivers(dRes.data);
-      } else {
-         setDrivers([{ id: "d1", name: "นายสมชาย ขับดี", phone: "081-xxx-xxxx" }]);
-      }
+      setDrivers(dRes.data || []);
       if (pRes.data) setUserProfile(pRes.data);
 
     } catch (error) {
@@ -442,29 +493,33 @@ export default function ReviewerBookingsPage() {
   });
 
   return (
-    <div className="min-h-screen font-sarabun text-black relative bg-slate-50 pb-12">
-      <PageHeader title="ตรวจสอบและจัดสรรรถ" />
+    <div className="min-h-screen font-sarabun text-black relative bg-slate-900 pb-12">
+      <Image src="/images/image.png" alt="Background" fill priority className="object-cover z-0 opacity-40" />
+      <div className="absolute inset-0 bg-black/60 z-0" />
+
+      <div className="relative z-10 border-b border-white/10">
+        <PageHeader title="ตรวจสอบและจัดสรรรถ" />
+      </div>
       
-      <div className="p-4 md:p-8 max-w-7xl mx-auto">
+      <div className="relative z-10 p-4 md:p-8 max-w-7xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
           <div>
-            <h1 className="text-3xl font-extrabold tracking-tight text-slate-900">ตรวจสอบและจัดสรรยานพาหนะ</h1>
-            <p className="text-slate-500 mt-1">คัดกรองคำขอ และจับคู่ยานพาหนะพร้อมพนักงานขับรถ</p>
+            <h1 className="text-3xl font-extrabold tracking-tight text-white drop-shadow-md">ตรวจสอบและจัดสรรยานพาหนะ</h1>
+            <p className="text-white/80 mt-1 drop-shadow-md">คัดกรองคำขอ และจับคู่ยานพาหนะพร้อมพนักงานขับรถ</p>
           </div>
         </div>
 
-        {/* --- Tabs & Filters --- */}
         <div className="flex flex-col sm:flex-row gap-4 justify-between items-center mb-6">
-          <div className="flex bg-slate-200/50 p-1 rounded-2xl w-full sm:w-auto">
+          <div className="flex bg-white/10 backdrop-blur-md p-1 rounded-2xl w-full sm:w-auto border border-white/20">
             <button 
               onClick={() => setActiveTab("pending")}
-              className={cn("flex-1 sm:px-8 py-2.5 rounded-xl font-bold text-sm transition-all duration-200", activeTab === "pending" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}
+              className={cn("flex-1 sm:px-8 py-2.5 rounded-xl font-bold text-sm transition-all duration-200", activeTab === "pending" ? "bg-white text-blue-700 shadow-sm" : "text-white/80 hover:text-white")}
             >
               รอตรวจสอบ ({bookings.filter(b => b.status === 'pending_review').length})
             </button>
             <button 
               onClick={() => setActiveTab("processed")}
-              className={cn("flex-1 sm:px-8 py-2.5 rounded-xl font-bold text-sm transition-all duration-200", activeTab === "processed" ? "bg-white text-blue-700 shadow-sm" : "text-slate-500 hover:text-slate-700")}
+              className={cn("flex-1 sm:px-8 py-2.5 rounded-xl font-bold text-sm transition-all duration-200", activeTab === "processed" ? "bg-white text-blue-700 shadow-sm" : "text-white/80 hover:text-white")}
             >
               ดำเนินการแล้ว
             </button>
@@ -473,20 +528,19 @@ export default function ReviewerBookingsPage() {
           <div className="flex gap-2 w-full sm:w-auto">
             <div className="relative flex-1 sm:w-64">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
-              <Input placeholder="ค้นหาชื่อผู้ขอ..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl border-slate-200 bg-white" />
+              <Input placeholder="ค้นหาชื่อผู้ขอ..." value={search} onChange={(e) => setSearch(e.target.value)} className="pl-9 h-11 rounded-xl border-none shadow-sm bg-white focus:ring-2 focus:ring-blue-500" />
             </div>
-            <Button variant="outline" size="icon" onClick={loadData} disabled={isLoading} className="h-11 w-11 rounded-xl bg-white border-slate-200 hover:bg-slate-100">
-              <RefreshCw className={cn("size-4 text-slate-600", isLoading && "animate-spin")} />
+            <Button variant="outline" size="icon" onClick={loadData} disabled={isLoading} className="h-11 w-11 rounded-xl bg-white border-none shadow-sm text-slate-600 hover:text-blue-600">
+              <RefreshCw className={cn("size-4", isLoading && "animate-spin text-blue-600")} />
             </Button>
           </div>
         </div>
 
-        {/* --- Table --- */}
-        <Card className="border-slate-200 shadow-sm rounded-[2rem] overflow-hidden bg-white">
+        <Card className="border-none shadow-md rounded-[2rem] overflow-hidden bg-white/95 backdrop-blur-sm">
           <CardContent className="p-0 overflow-x-auto">
             <Table>
-              <TableHeader className="bg-slate-50">
-                <TableRow>
+              <TableHeader className="bg-slate-50/80">
+                <TableRow className="border-b border-slate-200/50">
                   <TableHead className="pl-6 font-bold text-slate-500">เลขที่</TableHead>
                   <TableHead className="font-bold text-slate-500">ผู้ขอ / หน่วยงาน</TableHead>
                   <TableHead className="font-bold text-slate-500">เดินทาง</TableHead>
@@ -502,7 +556,7 @@ export default function ReviewerBookingsPage() {
                 ) : displayedBookings.length === 0 ? (
                   <TableRow><TableCell colSpan={7} className="h-48 text-center text-slate-400">ไม่มีรายการคำขอ</TableCell></TableRow>
                 ) : displayedBookings.map((b) => (
-                  <TableRow key={b.id} className="hover:bg-slate-50 border-b border-slate-100">
+                  <TableRow key={b.id} className="hover:bg-slate-50/50 transition-colors border-b border-slate-100/50">
                     <TableCell className="pl-6 font-mono text-xs font-bold text-slate-500 uppercase">REQ-{b.id.split('-')[0]}</TableCell>
                     <TableCell>
                       <p className="font-bold text-slate-900">{b.user_name}</p>
@@ -520,10 +574,10 @@ export default function ReviewerBookingsPage() {
                     <TableCell className="text-center font-bold text-slate-700">{b.passengers}</TableCell>
                     
                     {activeTab === 'processed' && (
-                      <TableCell>
-                        <Badge className={cn("text-[9px] px-2 py-0.5", 
-                          b.status === 'pending_approval' ? "bg-yellow-100 text-yellow-700" : 
-                          b.status === 'rejected' ? "bg-red-100 text-red-700" : "bg-green-100 text-green-700"
+                      <TableCell className="text-center">
+                        <Badge className={cn("text-[9px] px-2 py-0.5 border shadow-sm", 
+                          b.status === 'pending_approval' ? "bg-yellow-100 text-yellow-700 border-yellow-200" : 
+                          b.status === 'rejected' ? "bg-red-100 text-red-700 border-red-200" : "bg-green-100 text-green-700 border-green-200"
                         )}>
                           {b.status === 'pending_approval' ? 'รออนุมัติ' : b.status === 'rejected' ? 'ไม่อนุมัติ' : 'อนุมัติแล้ว'}
                         </Badge>
@@ -532,11 +586,11 @@ export default function ReviewerBookingsPage() {
 
                     <TableCell className="pr-6 text-right">
                       {activeTab === "pending" ? (
-                        <Button onClick={() => handleOpenReview(b)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-9 text-xs font-bold shadow-sm">
+                        <Button onClick={() => handleOpenReview(b)} className="bg-blue-600 hover:bg-blue-700 text-white rounded-xl h-9 text-xs font-bold shadow-sm transition-transform hover:scale-[1.02]">
                           ตรวจสอบ
                         </Button>
                       ) : (
-                        <Button onClick={() => handleOpenReview(b)} variant="outline" className="rounded-xl h-9 text-xs font-bold text-slate-600">ดูรายละเอียด</Button>
+                        <Button onClick={() => handleOpenReview(b)} variant="outline" className="rounded-xl h-9 text-xs font-bold text-slate-600 bg-white hover:bg-slate-50 border-slate-200 shadow-sm">ดูรายละเอียด</Button>
                       )}
                     </TableCell>
                   </TableRow>
@@ -546,7 +600,7 @@ export default function ReviewerBookingsPage() {
           </CardContent>
         </Card>
 
-        {/* --- Allocation Modal --- */}
+        {/* ✅ ปรับ Dialog ให้ความกว้างความสูงเหมือนหน้าผู้อนุมัติ เพื่อป้องกันการทะลุกรอบและบีบอัด */}
         <Dialog 
           open={reviewModalOpen} 
           onOpenChange={(open) => {
@@ -554,16 +608,19 @@ export default function ReviewerBookingsPage() {
             setReviewModalOpen(open);
           }}
         >
-          <DialogContent className="max-w-[98vw] lg:max-w-[1200px] p-0 overflow-hidden border-none rounded-2xl lg:rounded-[2rem] shadow-2xl bg-white max-h-[95vh] lg:max-h-[85vh] flex flex-col">
-            
-            {/* ✅ Hidden Title สำหรับ Screen Reader */}
+          <DialogContent 
+            onPointerDownOutside={(e) => e.preventDefault()}
+            onInteractOutside={(e) => e.preventDefault()}
+            onFocusOutside={(e) => e.preventDefault()}
+            className="max-w-[98vw] lg:max-w-[1400px] p-0 overflow-hidden border-none rounded-2xl lg:rounded-3xl shadow-2xl bg-white h-[95vh] lg:h-[90vh] flex flex-col"
+          >
             <DialogHeader className="hidden">
               <DialogTitle>จัดการคำขอจองรถ</DialogTitle>
               <DialogDescription>ตรวจสอบ อนุมัติ และจัดสรรยานพาหนะ</DialogDescription>
             </DialogHeader>
 
             <div className="p-4 lg:p-5 bg-[#0f172a] text-white shrink-0 relative flex flex-row items-center justify-center">
-              <h2 className="text-lg font-bold font-sarabun tracking-tight mx-auto">
+              <h2 className="text-lg lg:text-2xl font-bold font-sarabun tracking-tight mx-auto">
                 จัดการคำขอและจัดสรรรถยนต์
               </h2>
               <button
@@ -575,7 +632,8 @@ export default function ReviewerBookingsPage() {
               </button>
             </div>
 
-            <div className="px-4 lg:px-6 pb-4 lg:pb-6 pt-3 overflow-y-auto flex-1 bg-white scrollbar-hide">
+            {/* ✅ ซ่อน Scrollbar ของตัวกล่องหลัก แล้วไปให้หน้าต่างซ้ายขวาเลื่อนแยกกันเอง */}
+            <div className="px-4 lg:px-6 pb-4 lg:pb-6 pt-3 overflow-hidden flex-1 bg-white flex flex-col min-h-0 rounded-b-2xl lg:rounded-b-3xl">
               {selectedBooking && (
                 <ReviewDialogContent
                   booking={selectedBooking}
@@ -586,6 +644,7 @@ export default function ReviewerBookingsPage() {
                   onApprove={approveBooking}
                   onReject={rejectBooking}
                   userProfile={userProfile}
+                  isReadOnly={activeTab === "processed"} 
                 />
               )}
             </div>

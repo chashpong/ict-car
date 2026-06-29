@@ -15,7 +15,7 @@ import {
   Users,
   LogOut,
   ShieldAlert,
-  CalendarDays, // ✅ เพิ่มไอคอน CalendarDays
+  CalendarDays, 
   ClipboardList
 } from "lucide-react"
 import {
@@ -36,10 +36,12 @@ import { useAuth, canAccessRoute, getRoleLabel, getRoleBadgeColor } from "@/lib/
 import { supabase } from "@/lib/supabase"
 import Swal from 'sweetalert2'
 
-// ✅ แทรก "ปฏิทินการใช้รถ" เข้าไปในหมวดหมู่หลัก (mainNav)
+// ✅ 1. Import คอมโพเนนต์ UserProfileDialog ที่เราเพิ่งสร้าง
+import { UserProfileDialog } from "@/components/user-profile-dialog"
+
 const mainNav = [
   { title: "แดชบอร์ด",        href: "/",            icon: LayoutDashboard },
-  { title: "ปฏิทินการใช้รถ",  href: "/calendar",    icon: CalendarDays    }, // <-- ใส่ตรงนี้ให้หาง่าย
+  { title: "ปฏิทินการใช้รถ",  href: "/calendar",    icon: CalendarDays    },
   { title: "การจองรถ",        href: "/bookings",    icon: CalendarCheck   },
   { title: "ตรวจสอบคำขอ",     href: "/reviewer",    icon: ClipboardList   },
   { title: "อนุมัติคำขอ",      href: "/approvals",   icon: ClipboardCheck  },
@@ -65,6 +67,9 @@ export function AppSidebar() {
 
   // ── Pending approvals count (admin/approver) ──
   const [pendingCount, setPendingCount] = useState(0)
+
+  // ✅ 2. สร้าง State ควบคุมป๊อปอัปโปรไฟล์
+  const [profileOpen, setProfileOpen] = useState(false)
 
   useEffect(() => {
     if (role !== "admin" && role !== "approver") return
@@ -211,7 +216,6 @@ export function AppSidebar() {
                         className="text-white/70 hover:text-white hover:bg-white/10 rounded-xl h-11 transition-all"
                       >
                         <Link href={item.href} className="flex items-center gap-3">
-                          {/* Icon + red dot (collapsed mode) */}
                           <div className="relative shrink-0">
                             <item.icon className="size-[18px] opacity-80" />
                             {showBadge && (
@@ -220,8 +224,6 @@ export function AppSidebar() {
                               </span>
                             )}
                           </div>
-
-                          {/* Label + badge pill (expanded mode) */}
                           <span className="font-medium text-[14px] flex-1 group-data-[collapsible=icon]:hidden">
                             {item.title}
                           </span>
@@ -291,17 +293,30 @@ export function AppSidebar() {
 
       {/* Footer */}
       <SidebarFooter className="p-4 flex flex-col gap-3 bg-transparent mt-auto group-data-[collapsible=icon]:hidden">
-        <div className="flex items-center gap-3 bg-slate-800/40 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm">
-          <Avatar className="size-10 border border-white/10 shadow-sm shrink-0">
+        
+        {/* ✅ 3. เปลี่ยนกล่อง Profile เป็น Button เพื่อให้กดได้ */}
+        <button 
+          onClick={() => setProfileOpen(true)}
+          className="w-full flex items-center gap-3 bg-slate-800/40 hover:bg-slate-800/80 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm transition-all text-left group cursor-pointer"
+        >
+          <Avatar className="size-10 border border-white/10 shadow-sm shrink-0 group-hover:scale-105 transition-transform">
             <AvatarFallback className="bg-amber-500 text-white text-lg font-bold uppercase">
               {user?.name?.[0] ?? "?"}
             </AvatarFallback>
           </Avatar>
           <div className="flex flex-1 flex-col overflow-hidden">
-            <span className="text-[14px] font-bold text-white truncate">{user?.name ?? "ไม่ทราบชื่อ"}</span>
-            <span className="text-[11px] text-white/50 truncate font-medium mt-0.5">{getRoleLabel(role)}</span>
+            <span className="text-[14px] font-bold text-white truncate group-hover:text-blue-300 transition-colors">
+              {user?.name ?? "ไม่ทราบชื่อ"}
+            </span>
+            <span className="text-[11px] text-white/50 truncate font-medium mt-0.5 group-hover:hidden">
+              {getRoleLabel(role)}
+            </span>
+            <span className="text-[11px] text-blue-300 truncate font-medium mt-0.5 hidden group-hover:block">
+              แก้ไขโปรไฟล์
+            </span>
           </div>
-        </div>
+        </button>
+
         <Button
           variant="outline"
           onClick={handleLogout}
@@ -313,11 +328,19 @@ export function AppSidebar() {
 
       {/* Collapsed footer */}
       <div className="hidden group-data-[collapsible=icon]:flex flex-col items-center gap-3 p-3 mt-auto">
-        <Avatar className="size-8 border border-white/10 shadow-sm shrink-0">
-          <AvatarFallback className="bg-amber-500 text-white text-xs font-bold uppercase">
-            {user?.name?.[0] ?? "?"}
-          </AvatarFallback>
-        </Avatar>
+        {/* ✅ 4. ให้ Sidebar แบบหุบ กดรูป Profile ได้ด้วย */}
+        <button 
+          onClick={() => setProfileOpen(true)}
+          className="rounded-full hover:scale-110 transition-transform cursor-pointer" 
+          title="แก้ไขโปรไฟล์"
+        >
+          <Avatar className="size-8 border border-white/10 shadow-sm shrink-0">
+            <AvatarFallback className="bg-amber-500 text-white text-xs font-bold uppercase">
+              {user?.name?.[0] ?? "?"}
+            </AvatarFallback>
+          </Avatar>
+        </button>
+        
         <Button
           variant="ghost" size="icon" onClick={handleLogout}
           className="text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors h-10 w-10 rounded-xl cursor-pointer"
@@ -326,6 +349,10 @@ export function AppSidebar() {
           <LogOut className="size-5" />
         </Button>
       </div>
+
+      {/* ✅ 5. ฝัง Dialog ไว้ที่จุดท้ายสุดของ Component */}
+      <UserProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
+
     </Sidebar>
   )
 }
