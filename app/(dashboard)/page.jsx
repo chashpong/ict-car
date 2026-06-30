@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image" 
 import { useRouter } from "next/navigation" 
 import { useAuth } from "@/lib/auth-context" 
@@ -49,7 +49,7 @@ export default function AdvancedDashboardPage() {
   const router = useRouter()
 
   const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null) // ✅ เพิ่ม State ดัก Error
+  const [fetchError, setFetchError] = useState(null) 
 
   const [stats, setStats] = useState({
     totalBookings: 0, pending: 0, approved: 0, started: 0, completed: 0,
@@ -73,17 +73,11 @@ export default function AdvancedDashboardPage() {
     }
   }, [user, authLoading, router])
 
-  useEffect(() => {
-    if (user && user.role === "admin") {
-      fetchDashboardData()
-    }
-  }, [user])
-
-  async function fetchDashboardData() {
+  // ✅ 1. ห่อฟังก์ชันด้วย useCallback และป้องกัน Error หน้าจอแดง (Strict Mode)
+  const fetchDashboardData = useCallback(async () => {
     setLoading(true)
-    setFetchError(null) // ✅ เคลียร์ Error ก่อนดึงใหม่
+    setFetchError(null) 
     try {
-      // ✅ รับค่า Response ทั้งก้อน (มีทั้ง data และ error)
       const [bookingsRes, vehiclesRes, driversRes, logsRes] = await Promise.all([
         supabase.from("bookings").select("*").order("created_at", { ascending: false }),
         supabase.from("vehicles").select("*"),
@@ -91,7 +85,6 @@ export default function AdvancedDashboardPage() {
         supabase.from("logbooks").select("distance")
       ]);
 
-      // ✅ ดักจับ Error แจ้งเตือนแอดมินทันทีถ้าระบบโหลดไม่ขึ้น
       if (bookingsRes.error) throw bookingsRes.error;
       if (vehiclesRes.error) throw vehiclesRes.error;
       if (driversRes.error) throw driversRes.error;
@@ -146,12 +139,52 @@ export default function AdvancedDashboardPage() {
       setLineData(trend)
 
     } catch (error) {
+      // ✅ 2. ดักข้าม Error ที่เกิดจาก React Strict Mode แย่งกันดึงข้อมูล
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
       console.error("Error fetching dashboard data:", error)
       setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ตหรือปิดส่วนขยายเบราว์เซอร์")
     } finally {
       setLoading(false)
     }
-  }
+  }, []);
+
+  // ✅ 3. โหลดตอนเปิดหน้าเว็บ + รีเฟรชเมื่อสลับแท็บ + อัปเดต Real-time ทันทีที่มีรถหรือสถานะเปลี่ยน
+  useEffect(() => {
+    if (user && user.role === "admin") {
+      fetchDashboardData();
+
+      // -- ดักจับการสลับแท็บเบราว์เซอร์ (Visibility API) --
+      const handleVisibilityChange = () => {
+        if (document.visibilityState === 'visible') {
+          fetchDashboardData();
+        }
+      };
+      document.addEventListener("visibilitychange", handleVisibilityChange);
+      window.addEventListener("focus", handleVisibilityChange);
+
+      // -- ดักจับการอัปเดตแบบ Real-time ของการจองและรถยนต์ --
+      const channel = supabase
+        .channel('public:dashboard')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+           fetchDashboardData();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => {
+           fetchDashboardData();
+        })
+        .subscribe();
+
+      // Cleanup ถอดการติดตามเมื่อปิดหน้านี้
+      return () => {
+        document.removeEventListener("visibilitychange", handleVisibilityChange);
+        window.removeEventListener("focus", handleVisibilityChange);
+        supabase.removeChannel(channel);
+      };
+    }
+  }, [user, fetchDashboardData]);
+
+  // โค้ดส่วน if (authLoading || ...) จะอยู่ต่อจากบรรทัดนี้ลงไป
 
   if (authLoading || (user && user.role !== "admin" && user.role !== "approver")) {
     return (

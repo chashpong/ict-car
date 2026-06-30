@@ -1,6 +1,6 @@
 "use client"
 
-import React, { useState, useEffect, useMemo } from "react"
+import React, { useState, useEffect, useMemo, useCallback } from "react"
 import Image from "next/image"
 import { supabase } from "@/lib/supabase"
 import { cn } from "@/lib/utils"
@@ -59,7 +59,8 @@ export default function CalendarPage() {
     loadCalendarData()
   }, [])
 
-  const loadCalendarData = async () => {
+// ✅ 1. ห่อฟังก์ชันด้วย useCallback และเพิ่มการดักจับ Error หน้าจอแดง
+  const loadCalendarData = useCallback(async () => {
     setIsLoading(true)
     try {
       const [bRes, vRes] = await Promise.all([
@@ -70,17 +71,55 @@ export default function CalendarPage() {
         supabase.from("vehicles").select("id, license_plate, brand")
       ])
 
+      if (bRes.error) throw bRes.error;
+      if (vRes.error) throw vRes.error;
+
       setBookings(bRes.data || [])
       setVehicles(vRes.data || [])
       
       // อัปเดตรายการจองของวันที่ถูกเลือกอยู่
       updateActiveDayList(activeDayStr, bRes.data || [])
     } catch (error) {
+      // 🚫 ซ่อน Error แจ้งเตือนจากการถูก Strict Mode ขโมย Lock
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
       console.error("Error loading calendar data:", error)
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [activeDayStr]) // ต้องใส่ activeDayStr ไว้ในก้อนนี้ด้วยเพราะเรียกใช้งานในฟังก์ชัน
+
+  // ✅ 2. รวบรวมคำสั่งเปิดหน้าเว็บครั้งแรก + สลับแท็บ + Realtime ไว้ใน useEffect เดียว
+  useEffect(() => {
+    loadCalendarData()
+
+    // -- อัปเดตเมื่อสลับแท็บเบราว์เซอร์กลับมา --
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadCalendarData()
+      }
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("focus", handleVisibilityChange)
+
+    // -- อัปเดตเมื่อมีการเปลี่ยนแปลงในฐานข้อมูลทันที --
+    const channel = supabase
+      .channel('calendar-bookings-update')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+         loadCalendarData()
+      })
+      .subscribe()
+
+    // Cleanup ระบบ
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("focus", handleVisibilityChange)
+      supabase.removeChannel(channel)
+    }
+  }, [loadCalendarData])
+
+ 
 
   // ตัวกรองข้อมูลคิวจองรถตามทะเบียนรถที่เลือก
   const filteredBookings = useMemo(() => {

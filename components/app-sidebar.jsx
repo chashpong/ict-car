@@ -4,39 +4,18 @@ import Link from "next/link"
 import { usePathname, useRouter } from "next/navigation"
 import { useState, useEffect } from "react"
 import {
-  LayoutDashboard,
-  Car,
-  CalendarCheck,
-  ClipboardCheck,
-  History,
-  BookOpen,
-  Wrench,
-  BarChart3,
-  Users,
-  LogOut,
-  ShieldAlert,
-  CalendarDays, 
-  ClipboardList
+  LayoutDashboard, Car, CalendarCheck, ClipboardCheck, History, BookOpen,
+  Wrench, BarChart3, Users, LogOut, ShieldAlert, CalendarDays, ClipboardList
 } from "lucide-react"
 import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
+  Sidebar, SidebarContent, SidebarFooter, SidebarGroup, SidebarGroupContent,
+  SidebarGroupLabel, SidebarHeader, SidebarMenu, SidebarMenuButton, SidebarMenuItem,
 } from "@/components/ui/sidebar"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
 import { useAuth, canAccessRoute, getRoleLabel, getRoleBadgeColor } from "@/lib/auth-context"
 import { supabase } from "@/lib/supabase"
 import Swal from 'sweetalert2'
-
-// ✅ 1. Import คอมโพเนนต์ UserProfileDialog ที่เราเพิ่งสร้าง
 import { UserProfileDialog } from "@/components/user-profile-dialog"
 
 const mainNav = [
@@ -58,18 +37,44 @@ const recordNav = [
   { title: "ประวัติระบบ",       href: "/logs",        icon: ShieldAlert },
 ]
 
+// ✅ 1. แยก Component นาฬิกาออกมา เพื่อไม่ให้ Sidebar ทั้งแผงต้องกระพริบอัปเดตทุกๆ 1 วินาที
+function ClockWidget({ role }) {
+  const [mounted, setMounted] = useState(false)
+  const [time, setTime] = useState(new Date())
+
+  useEffect(() => {
+    setMounted(true)
+    const timer = setInterval(() => setTime(new Date()), 1000)
+    return () => clearInterval(timer)
+  }, [])
+
+  const formattedTime = mounted ? time.toLocaleTimeString('th-TH', { hour12: false }) : "00:00:00"
+  const formattedDate = mounted ? time.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : "-- -- ----"
+
+  return (
+    <div className="px-3 pt-2 pb-4 group-data-[collapsible=icon]:hidden">
+      <div className="flex items-center justify-between rounded-2xl bg-slate-800/40 p-4 border border-white/5 shadow-inner backdrop-blur-sm">
+        <div className="flex flex-col">
+          <span className="font-mono text-2xl leading-none font-extrabold tracking-wider text-white drop-shadow-md">{formattedTime}</span>
+          <span className="text-[13px] font-medium text-slate-400 mt-1.5">{formattedDate}</span>
+        </div>
+        <span className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold border whitespace-nowrap ${getRoleBadgeColor(role)}`}>
+          {getRoleLabel(role)}
+        </span>
+      </div>
+    </div>
+  )
+}
+
 export function AppSidebar() {
   const pathname = usePathname()
   const router = useRouter()
   const { user, logout } = useAuth()
-
   const role = user?.role ?? "user"
 
-  // ── Pending approvals count (admin/approver) ──
   const [pendingCount, setPendingCount] = useState(0)
-
-  // ✅ 2. สร้าง State ควบคุมป๊อปอัปโปรไฟล์
   const [profileOpen, setProfileOpen] = useState(false)
+  const [logbookCount, setLogbookCount] = useState(0)
 
   useEffect(() => {
     if (role !== "admin" && role !== "approver") return
@@ -92,18 +97,16 @@ export function AppSidebar() {
     return () => { supabase.removeChannel(channel) }
   }, [role])
 
-  // ── Logbook jobs count (driver) ──
-  const [logbookCount, setLogbookCount] = useState(0)
-
   useEffect(() => {
     if (role !== "driver" || !user?.id) return
 
     async function fetchLogbookJobs() {
+      // ✅ 2. เปลี่ยนมาใช้ maybeSingle() เพื่อไม่ให้เกิด Error แดงใน Console ถ้ายังไม่มีข้อมูลคนขับ
       const { data: driverData } = await supabase
         .from("drivers")
         .select("id")
         .eq("user_id", user.id)
-        .single()
+        .maybeSingle() 
 
       if (!driverData) return
 
@@ -137,18 +140,6 @@ export function AppSidebar() {
     return canAccessRoute(role, item.href);
   });
 
-  const [mounted, setMounted] = useState(false)
-  const [time, setTime] = useState(new Date())
-
-  useEffect(() => {
-    setMounted(true)
-    const timer = setInterval(() => setTime(new Date()), 1000)
-    return () => clearInterval(timer)
-  }, [])
-
-  const formattedTime = mounted ? time.toLocaleTimeString('th-TH', { hour12: false }) : "00:00:00"
-  const formattedDate = mounted ? time.toLocaleDateString('th-TH', { day: 'numeric', month: 'short', year: 'numeric' }) : "-- -- ----"
-
   async function handleLogout(e) {
     e.preventDefault();
     Swal.fire({
@@ -181,18 +172,8 @@ export function AppSidebar() {
 
       <SidebarContent className="overflow-y-auto [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-track]:bg-transparent [&::-webkit-scrollbar-thumb]:bg-slate-700/50 [&::-webkit-scrollbar-thumb]:rounded-full hover:[&::-webkit-scrollbar-thumb]:bg-slate-600/80 pr-1">
 
-        {/* Clock widget */}
-        <div className="px-3 pt-2 pb-4 group-data-[collapsible=icon]:hidden">
-          <div className="flex items-center justify-between rounded-2xl bg-slate-800/40 p-4 border border-white/5 shadow-inner backdrop-blur-sm">
-            <div className="flex flex-col">
-              <span className="font-mono text-2xl leading-none font-extrabold tracking-wider text-white drop-shadow-md">{formattedTime}</span>
-              <span className="text-[13px] font-medium text-slate-400 mt-1.5">{formattedDate}</span>
-            </div>
-            <span className={`inline-flex items-center rounded-full px-3 py-1 text-[11px] font-bold border whitespace-nowrap ${getRoleBadgeColor(role)}`}>
-              {getRoleLabel(role)}
-            </span>
-          </div>
-        </div>
+        {/* ✅ 3. เรียกใช้งาน Component นาฬิกาที่แยกออกไป */}
+        <ClockWidget role={role} />
 
         {/* ── Main nav ── */}
         {filteredMainNav.length > 0 && (
@@ -291,10 +272,7 @@ export function AppSidebar() {
         )}
       </SidebarContent>
 
-      {/* Footer */}
       <SidebarFooter className="p-4 flex flex-col gap-3 bg-transparent mt-auto group-data-[collapsible=icon]:hidden">
-        
-        {/* ✅ 3. เปลี่ยนกล่อง Profile เป็น Button เพื่อให้กดได้ */}
         <button 
           onClick={() => setProfileOpen(true)}
           className="w-full flex items-center gap-3 bg-slate-800/40 hover:bg-slate-800/80 p-3.5 rounded-2xl border border-white/5 backdrop-blur-sm transition-all text-left group cursor-pointer"
@@ -326,9 +304,7 @@ export function AppSidebar() {
         </Button>
       </SidebarFooter>
 
-      {/* Collapsed footer */}
       <div className="hidden group-data-[collapsible=icon]:flex flex-col items-center gap-3 p-3 mt-auto">
-        {/* ✅ 4. ให้ Sidebar แบบหุบ กดรูป Profile ได้ด้วย */}
         <button 
           onClick={() => setProfileOpen(true)}
           className="rounded-full hover:scale-110 transition-transform cursor-pointer" 
@@ -350,9 +326,7 @@ export function AppSidebar() {
         </Button>
       </div>
 
-      {/* ✅ 5. ฝัง Dialog ไว้ที่จุดท้ายสุดของ Component */}
       <UserProfileDialog open={profileOpen} onOpenChange={setProfileOpen} />
-
     </Sidebar>
   )
 }

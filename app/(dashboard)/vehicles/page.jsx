@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { 
   Plus, Search, Pencil, Trash2, Loader2, 
@@ -236,15 +236,13 @@ export default function VehiclesPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editVehicle, setEditVehicle] = useState(undefined)
   const [loading, setLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null) // ✅ 1. เพิ่ม State ดัก Error
+  const [fetchError, setFetchError] = useState(null)
 
-  useEffect(() => { 
-    if(user) loadData() 
-  }, [user])
-
-  async function loadData() {
+  // ✅ 1. ห่อฟังก์ชันด้วย useCallback และป้องกัน Error หน้าจอแดง (Strict Mode)
+  const loadData = useCallback(async () => {
+    if (!user) return;
     setLoading(true)
-    setFetchError(null) // ✅ เคลียร์ Error เดิมทิ้ง
+    setFetchError(null) 
     try {
       const promises = [
         supabase.from("vehicles").select("*").order('created_at', { ascending: false })
@@ -254,19 +252,54 @@ export default function VehiclesPage() {
       }
       const results = await Promise.all(promises);
 
-      // ✅ 2. ตรวจสอบ Error จากฐานข้อมูล
       if (results[0].error) throw results[0].error;
       
       if (results[0].data) setVehicles(results[0].data);
       if (results[1]?.data) setCurrentUserProfile(results[1].data);
     } catch (error) {
+      // ✅ 2. ดักข้าม Error ที่เกิดจาก React Strict Mode แย่งกันดึงข้อมูล
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
       console.error("Error loading vehicles:", error);
-      // ✅ 3. เซ็ตค่า Error ไปโชว์หน้า UI
       setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ตหรือปิดส่วนขยายเบราว์เซอร์");
     } finally {
       setLoading(false)
     }
-  }
+  }, [user, currentUserProfile]);
+
+  // ✅ 3. โหลดตอนเปิดหน้าเว็บ + รีเฟรชเมื่อสลับแท็บ + อัปเดต Real-time
+  useEffect(() => { 
+    if(!user) return;
+    
+    loadData();
+
+    // -- ดักจับการสลับแท็บเบราว์เซอร์ (Visibility API) --
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // -- ดักจับการเพิ่ม/ลบ/แก้ไขรถยนต์จากเครื่องอื่นแบบ Real-time --
+    const channel = supabase
+      .channel('public:vehicles')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => {
+         loadData();
+      })
+      .subscribe();
+
+    // Cleanup ระบบเมื่อออกจากหน้านี้
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      supabase.removeChannel(channel);
+    };
+  }, [user, loadData]);
+
+  // ฟังก์ชัน async function saveVehicle(data) { ... จะอยู่ต่อจากบรรทัดนี้ลงไป
 
   async function saveVehicle(data) {
     const payload = { ...data }

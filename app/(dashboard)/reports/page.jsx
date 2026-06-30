@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useRef, useState } from "react"
+import { useEffect, useMemo, useRef, useState, useCallback } from "react"
 import Image from "next/image"
 import { cn } from "@/lib/utils"
 import {
@@ -71,11 +71,10 @@ export default function ReportsPage() {
   // ref ที่ชี้ไปยัง hidden div ที่จะ render เป็น PDF
   const pdfContentRef = useRef(null)
 
-  /* ===================== FETCH ===================== */
+ /* ===================== FETCH ===================== */
 
-  useEffect(() => { fetchData() }, [])
-
-  async function fetchData() {
+  // ✅ 1. ห่อฟังก์ชันด้วย useCallback และดักจับ Error หน้าจอแดง (Strict Mode)
+  const fetchData = useCallback(async () => {
     setLoading(true)
     try {
       const [vRes, lRes, fRes] = await Promise.all([
@@ -99,11 +98,50 @@ export default function ReportsPage() {
       setVehicles(vRes.data || [])
       setLogEntries(mappedLogs)
     } catch (error) {
+      // ✅ 2. ดักข้าม Error ที่เกิดจาก React Strict Mode แย่งกันดึงข้อมูล
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
       console.error("Error loading reports data:", error)
     } finally {
       setLoading(false)
     }
-  }
+  }, []);
+
+  // ✅ 3. โหลดตอนเปิดหน้าเว็บ + รีเฟรชเมื่อสลับแท็บ + อัปเดต Real-time
+  useEffect(() => { 
+    fetchData(); 
+
+    // -- ดักจับการสลับแท็บเบราว์เซอร์ (Visibility API) --
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // -- ดักจับเมื่อมีการบันทึกเลขไมล์ (logbooks) หรือบิลน้ำมัน (fuel_expenses) ใหม่ๆ เข้ามาแบบ Real-time --
+    const channel = supabase
+      .channel('public:reports')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'logbooks' }, () => {
+         fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fuel_expenses' }, () => {
+         fetchData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => {
+         fetchData(); // เผื่อมีการแก้ไขทะเบียนรถ
+      })
+      .subscribe();
+
+    // Cleanup ระบบเมื่อออกจากหน้านี้
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchData])
 
   /* ===================== FILTER ===================== */
 

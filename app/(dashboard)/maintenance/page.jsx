@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, useCallback } from "react"
 import Image from "next/image" // ✅ 1. นำเข้า Next Image
 import { cn } from "@/lib/utils" // ✅ นำเข้า cn
 import { 
@@ -243,12 +243,9 @@ export default function MaintenancePage() {
 
   const { user } = useAuth()
 
-  useEffect(() => {
-    if (user) loadAllData();
-  }, [user])
-
-  // ✅ 2. รวบรวมการดึงข้อมูล 3 อย่าง ให้อยู่ในรอบเดียว (Promise.all)
-  async function loadAllData() {
+  // ✅ 1. ห่อฟังก์ชันด้วย useCallback และดัก Error หน้าจอแดง (Strict Mode)
+  const loadAllData = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     try {
       const promises = [
@@ -263,18 +260,60 @@ export default function MaintenancePage() {
 
       const results = await Promise.all(promises);
 
+      if (results[0].error) throw results[0].error;
+      if (results[1].error) throw results[1].error;
+
       if (results[0].data) setMaintenanceRecords(results[0].data);
       if (results[1].data) setVehicles(results[1].data);
       if (results[2]?.data) setUserProfile(results[2].data);
 
     } catch (error) {
+      // ✅ 2. ดักข้าม Error ที่เกิดจาก React Strict Mode แย่งกันดึงข้อมูล
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
       console.error("Error fetching data:", error);
     } finally {
       setLoading(false);
     }
-  }
+  }, [user, userProfile]);
+
+  // ✅ 3. รวบรวมการโหลดข้อมูล, สลับแท็บ, และ Real-time ไว้ในที่เดียว
+  useEffect(() => {
+    if (!user) return;
+    
+    loadAllData();
+
+    // -- ดักจับการสลับแท็บเบราว์เซอร์ (Visibility API) --
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // -- ดักจับการแจ้งรถเสีย/แก้ไข จากตาราง maintenance และ vehicles แบบ Real-time --
+    const channel = supabase
+      .channel('public:maintenance_and_vehicles')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance' }, () => {
+         loadAllData();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'vehicles' }, () => {
+         loadAllData(); // รีเฟรชด้วยเผื่อมีคนแก้สถานะรถ
+      })
+      .subscribe();
+
+    // Cleanup ถอดการติดตามเมื่อออกจากหน้านี้
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      supabase.removeChannel(channel);
+    };
+  }, [user, loadAllData]);
 
   if (!user || user.role !== "admin") {
+  // ... โค้ดส่วนอื่นๆ ปล่อยไว้เหมือนเดิมครับ
     return (
       <div className="flex h-[80vh] flex-col items-center justify-center text-center font-sarabun">
         <div className="rounded-full bg-red-100 p-6 mb-4">

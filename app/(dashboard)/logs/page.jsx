@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image" // ✅ 1. นำเข้า Next Image
 import { cn } from "@/lib/utils" // ✅ นำเข้า cn
 import { 
@@ -52,25 +52,61 @@ export default function AuditLogsPage() {
   const [actionFilter, setActionFilter] = useState("all")
   const [selectedLog, setSelectedLog] = useState(null)
 
-  useEffect(() => {
-    fetchLogs()
-  }, [])
-
-  async function fetchLogs() {
+// ✅ 1. ห่อฟังก์ชันด้วย useCallback และดักจับ Error หน้าจอแดง (Strict Mode)
+  const fetchLogs = useCallback(async () => {
     setLoading(true)
-    const { data, error } = await supabase
-      .from("audit_logs")
-      .select("*")
-      .order("created_at", { ascending: false })
-      .limit(200) // ดึงมา 200 รายการล่าสุดเพื่อไม่ให้หนักเครื่อง
+    try {
+      const { data, error } = await supabase
+        .from("audit_logs")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(200) // ดึงมา 200 รายการล่าสุดเพื่อไม่ให้หนักเครื่อง
 
-    if (!error) {
-      setLogs(data || [])
+      if (error) throw error;
+      setLogs(data || []);
+      
+    } catch (error) {
+      // ✅ 2. ดักข้าม Error ที่เกิดจาก React Strict Mode แย่งกันดึงข้อมูล
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
+      console.error("Error fetching logs:", error);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false)
-  }
+  }, []);
+
+  // ✅ 3. โหลดตอนเปิดหน้าเว็บ + รีเฟรชเมื่อสลับแท็บ + อัปเดต Real-time
+  useEffect(() => {
+    fetchLogs();
+
+    // -- ดักจับการสลับแท็บเบราว์เซอร์ (Visibility API) --
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        fetchLogs();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // -- ดักจับประวัติกิจกรรมใหม่ๆ แบบ Real-time --
+    const channel = supabase
+      .channel('public:audit_logs')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'audit_logs' }, () => {
+         fetchLogs();
+      })
+      .subscribe();
+
+    // Cleanup ถอดการติดตามเมื่อออกจากหน้านี้
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      supabase.removeChannel(channel);
+    };
+  }, [fetchLogs]);
 
   const filteredLogs = logs.filter(log => {
+  // ... โค้ดส่วนอื่นๆ ด้านล่างนี้ปล่อยไว้เหมือนเดิมครับ
     const matchSearch = log.user_name?.toLowerCase().includes(search.toLowerCase()) || 
                         log.entity_id?.toLowerCase().includes(search.toLowerCase());
     const matchAction = actionFilter === "all" || log.action === actionFilter;

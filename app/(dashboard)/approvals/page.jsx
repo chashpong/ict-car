@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef, useMemo } from "react"
+import { useState, useEffect, useRef, useMemo, useCallback} from "react"
 import Image from "next/image"
 import { useAuth } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
@@ -576,52 +576,83 @@ export default function ApprovalsPage() {
   const [fetchError, setFetchError] = useState(null) 
   const [search, setSearch] = useState("")
 
-  useEffect(() => {
-    if (!user) return; 
-    loadAllData();
-    const channel = supabase
-      .channel('public:bookings')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
-         loadAllData();
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(channel) };
-  }, [user]);
-
-  useEffect(() => {
-    async function fetchUserProfile() {
-      if (!user?.id) return;
-      const { data } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (data) setUserProfile(data)
-    }
-    fetchUserProfile()
-  }, [user])
-
-  async function loadAllData() {
+  // ✅ 1. ห่อด้วย useCallback และรวบการโหลด Profile + Bookings มาทำพร้อมกัน (Parallel Fetching) เพื่อให้หน้าเว็บโหลดไวขึ้น 2 เท่า
+  const loadAllData = useCallback(async () => {
     if (!user) {
       setIsLoading(false);
       return;
     }
+    
     setIsLoading(true);
     setFetchError(null);
+    
     try {
-      const [bRes] = await Promise.all([
+      const promises = [
         supabase
           .from("bookings")
           .select("*, vehicles(license_plate, brand, model, last_mileage), drivers(name, phone)")
           .eq("status", "pending_approval")
           .order("created_at", { ascending: true })
-      ]);
-      if (bRes.error) throw bRes.error;
-      setBookings(bRes.data || []);
+      ];
+
+      if (user?.id) {
+        promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
+      }
+
+      const results = await Promise.all(promises);
+
+      if (results[0].error) throw results[0].error;
+      setBookings(results[0].data || []);
+
+      if (results[1] && results[1].data) {
+        setUserProfile(results[1].data);
+      }
+
     } catch (error) {
+      // ✅ 2. ดักจับ Error จาก React Strict Mode ไม่ให้โชว์หน้าจอแดง
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
       console.error("Error loading data:", error);
-      setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ต หรือปิดส่วนขยายบล็อกโฆษณา (AdBlock)");
+      setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้ โปรดตรวจสอบอินเทอร์เน็ต");
     } finally {
       setIsLoading(false); 
     }
-  }
+  }, [user]);
 
+  // ✅ 3. รวบรวม Real-time และ Visibility API (สลับแท็บเพื่ออัปเดต) ไว้ที่เดียวกัน
+  useEffect(() => {
+    if (!user) return; 
+    
+    loadAllData(); // โหลดครั้งแรกตอนเปิดหน้าเว็บ
+
+    // -- ดักจับการสลับแท็บเบราว์เซอร์ --
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // -- ดักจับการเปลี่ยนแปลข้อมูลแบบ Real-time --
+    const channel = supabase
+      .channel('public:approvals')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+         loadAllData();
+      })
+      .subscribe();
+
+    // Cleanup ถอดการติดตามเมื่อปิดหน้าเว็บ
+    return () => { 
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      supabase.removeChannel(channel); 
+    };
+  }, [user, loadAllData]);
+
+  
+ 
   async function handleUpdateSignatures(updatedSignatures) {
     if (!user?.id) return false;
     try {

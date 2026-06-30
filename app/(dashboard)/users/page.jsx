@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image" 
 import { useAuth } from "@/lib/auth-context" 
 import { cn } from "@/lib/utils" 
@@ -103,29 +103,12 @@ export default function UsersManagementPage() {
   const [editUser, setEditUser] = useState(null)
   const [isSaving, setIsSaving] = useState(false)
 
-  // ✅ เพิ่ม Real-time Notification
-  useEffect(() => { 
-    if(!user) return;
-    
-    loadAllData();
-
-    // เปิดเรดาร์รับข้อมูลผู้ใช้ใหม่ หรือการอัปเดตแบบ Real-time
-    const channel = supabase
-      .channel('public:profiles')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
-         loadAllData(); 
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user])
-
-  async function loadAllData() {
+  // ✅ 1. ห่อฟังก์ชันด้วย useCallback และป้องกัน Error หน้าจอแดง
+  const loadAllData = useCallback(async () => {
     if (!user) return;
     setLoading(true);
     try {
-      // ✅ เพิ่มการรอกุญแจยืนยันตัวตน เพื่อป้องกันจอหมุนค้าง
-      await supabase.auth.getSession();
+      // ❌ ลบ await supabase.auth.getSession() ออกเพื่อแก้ปัญหา Lock ซ้อน
 
       const promises = [
         supabase.from("profiles").select("*").order('full_name', { ascending: true })
@@ -140,12 +123,49 @@ export default function UsersManagementPage() {
       if (results[1]?.data) setCurrentUserProfile(results[1].data);
       
     } catch (error) {
+      // ✅ 2. ดัก Error ที่เกิดจากการดึงข้อมูลซ้อนกันของ React Strict Mode
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
       console.error("Error loading users:", error);
       Swal.fire({ icon: 'error', title: 'ดึงข้อมูลไม่สำเร็จ', text: error.message });
     } finally {
       setLoading(false);
     }
-  }
+  }, [user, currentUserProfile]);
+
+  // ✅ 3. รวมการโหลดตอนเปิดหน้า + สลับแท็บเบราว์เซอร์ + Realtime
+  useEffect(() => { 
+    if(!user) return;
+    
+    loadAllData();
+
+    // -- ดักจับเมื่อผู้ใช้สลับแท็บกลับมา --
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // -- เปิดเรดาร์รับข้อมูลผู้ใช้ใหม่ หรือการอัปเดตแบบ Real-time --
+    const channel = supabase
+      .channel('public:profiles')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
+         loadAllData(); 
+      })
+      .subscribe();
+
+    // Cleanup ระบบเมื่อปิดหน้าเว็บ
+    return () => { 
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      supabase.removeChannel(channel); 
+    };
+  }, [user, loadAllData])
+
+  // ฟังก์ชัน async function handleUpdateProfile(formData) { ... จะอยู่ต่อจากบรรทัดนี้ลงไป
 
   async function handleUpdateProfile(formData) {
     setIsSaving(true)

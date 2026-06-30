@@ -81,11 +81,12 @@ export function UserProfileDialog({ open, onOpenChange }) {
         timer: 1500,
         showConfirmButton: false
       }).then(() => {
-        onOpenChange(false)
-        // บังคับโหลดหน้าใหม่เบาๆ เพื่อให้ชื่อบน Sidebar อัปเดต
-        window.location.reload()
+        onOpenChange(false);
+        // ✅ เปลี่ยนจากการรีเฟรชหน้าเว็บ เป็นการเรียก router.refresh() 
+        // หรือถ้าอยากให้ชื่อ Sidebar อัปเดตทันทีแบบนุ่มนวลที่สุด 
+        // ให้ลองแค่ปิด Dialog เฉยๆ (Sidebar ควรจะดึงค่าจาก AuthContext ที่คุณเขียนไว้อยู่แล้ว)
+        // หรือถ้าอยากบังคับให้มันเปลี่ยนจริงๆ ให้เพิ่ม router เข้าไปในไฟล์นี้แล้วใช้ router.refresh()
       })
-
     } catch (error) {
       Swal.fire({ icon: 'error', title: 'เกิดข้อผิดพลาด', text: error.message })
     } finally {

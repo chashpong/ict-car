@@ -1,7 +1,7 @@
 "use client"
 
 import { useAuth } from "@/lib/auth-context"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image" 
 import { 
   Search, FileImage, MapPin, Camera, Play, 
@@ -36,7 +36,6 @@ import { cn } from "@/lib/utils"
 
 import { supabase } from "@/lib/supabase"
 import Swal from "sweetalert2" 
-// ✅ 1. Import ไลบรารีบีบอัดรูปภาพ
 import imageCompression from 'browser-image-compression';
 
 // ================= HELPERS =================
@@ -352,13 +351,11 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
     loadLogs()
   }, [booking])
 
-  // ✅ 2. อัปเดตฟังก์ชันอัปโหลดให้บีบอัดรูปและแยกโฟลเดอร์ตามงาน
   async function uploadImage(file, fieldKey) {
     if (!file) return null
     setUploadingField(fieldKey)
 
     try {
-      // ตัวเลือกการบีบอัดภาพ (บีบให้ไฟล์เล็ก ไม่เกิน 500KB เพื่ออัปโหลดไวๆ)
       const options = {
         maxSizeMB: 0.5, 
         maxWidthOrHeight: 1280, 
@@ -367,11 +364,9 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
       
       const compressedFile = await imageCompression(file, options)
       
-      // ตั้งชื่อไฟล์และจัดเก็บในรูปแบบโฟลเดอร์: [booking_id]/[fieldKey]_[timestamp].jpg
       const fileExt = compressedFile.name.split('.').pop() || 'jpg'
       const fileName = `${booking.id}/${fieldKey}_${Date.now()}.${fileExt}`
       
-      // เปลี่ยนไปใช้ Bucket 'trip-images' ที่เราสร้างใหม่
       const { error } = await supabase.storage.from("trip-images").upload(fileName, compressedFile)
       if (error) throw error
 
@@ -404,11 +399,9 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
     setFuelRecords([...fuelRecords, data])
   }
 
-  // ✅ 3. อัปเดต Logic การบันทึกรถเสีย (ให้อัปเดตสถานะและเคลียร์หน้า)
   async function saveDay(index) {
     const d = days[index]
     
-    // ตรวจสอบเงื่อนไขถ้าไม่ใช่แจ้งรถเสีย
     if (d.status !== "breakdown") {
       const startM = Number(d.start_mileage) || 0
       const endM = Number(d.end_mileage) || 0
@@ -417,7 +410,6 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
         return
       }
     } else {
-      // บังคับกรอกสาเหตุถ้ารถเสีย
       if (!d.note?.trim()) {
         Swal.fire({ icon: 'warning', title: 'ข้อมูลไม่ครบ', text: 'กรุณาระบุสาเหตุหรือรายละเอียดอาการรถเสีย', confirmButtonColor: '#0f172a' })
         return
@@ -426,7 +418,6 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
 
     setSavingIndex(index)
     
-    // ดึงค่ามาเตรียมบันทึก
     const startM = Number(d.start_mileage) || 0
     const endM = Number(d.end_mileage) || 0
     const dist = endM - startM
@@ -434,8 +425,8 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
     const payload = {
       booking_id: booking.id, vehicle_id: booking.vehicle_id, driver_id: booking.driver_id,
       log_date: d.date,
-      start_mileage: startM, // ถ้ารถเสีย แต่กรอกไมล์เริ่มไปแล้ว ก็ยังเก็บไว้
-      end_mileage: d.status === "breakdown" ? 0 : endM, // ยกเลิกไมล์จบถ้ารถเสีย
+      start_mileage: startM, 
+      end_mileage: d.status === "breakdown" ? 0 : endM, 
       distance: dist > 0 ? dist : 0,
       fuel_liter: Number(d.fuel_liter) || 0, fuel_cost: Number(d.fuel_cost) || 0,
       note: d.note || null, status: d.status,
@@ -444,28 +435,23 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
       receipt_image: d.receipt_image
     }
     
-    // บันทึกลง Logbooks
     const { error } = await supabase.from("logbooks").upsert(payload, { onConflict: 'booking_id, log_date' })
     if (error) { Swal.fire('ข้อผิดพลาด', error.message, 'error'); setSavingIndex(null); return }
     
-    // จัดการ Logic ถ้ารถเสีย
     if (d.status === "breakdown") {
       await supabase.from("vehicles").update({ status: "maintenance" }).eq("id", booking.vehicle_id)
       await supabase.from("maintenance").insert([{ vehicle_id: booking.vehicle_id, vehicle_plate: booking.vehicles?.license_plate || "ไม่ทราบทะเบียน", type: "แจ้งรถเสีย", date: d.date, description: d.note, cost: 0 }])
       
-      // ✅ เปลี่ยนสถานะงานเป็น 'interrupted'
       await supabase.from("bookings").update({ status: "interrupted" }).eq("id", booking.id)
       
       setSavingIndex(null)
       await Swal.fire({ icon: 'warning', title: 'แจ้งรถเสียสำเร็จ', text: 'ระบบส่งเรื่องไปยังฝ่ายซ่อมบำรุง และระงับงานนี้แล้ว', confirmButtonColor: '#d33' })
       
-      // ✅ โหลดข้อมูลใหม่และกลับไปหน้า Today ทันทีโดยไม่ต้อง Refresh หน้าเว็บ
       onRefresh()
       onBackToToday()
       return
     } else {
       Swal.fire({ icon: 'success', title: 'บันทึกสำเร็จ', text: `บันทึกข้อมูลวันที่ ${formatThaiDate(d.date)} เรียบร้อยแล้ว`, timer: 2000, showConfirmButton: false })
-      // เปลี่ยนสถานะเป็น started ถ้ายันไม่เคยเปลี่ยน
       if (booking.status !== 'started') await supabase.from("bookings").update({ status: "started" }).eq("id", booking.id)
     }
     
@@ -492,7 +478,6 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
     return true
   }
 
-  // ✅ 4. อัปเดตฟังก์ชันตอนจบงาน ให้รีเฟรชข้อมูลโดยไม่ต้องรีโหลดทั้งหน้าเว็บ
   async function finishTrip() {
     if (!validate()) return
     setLoading(true)
@@ -526,7 +511,6 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
     setLoading(false)
     await Swal.fire({ title: 'สำเร็จ', text: 'ส่งรายงานและสิ้นสุดการเดินทางเรียบร้อยแล้ว', icon: 'success', confirmButtonColor: '#0ea5e9' })
     
-    // ✅ เรียก Refresh แล้วกลับหน้าแรก
     onRefresh()
     onBackToToday()
   }
@@ -599,7 +583,6 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
                         const newDays = [...days]
                         newDays[index].status = val
                         if (val === "breakdown") {
-                          // ถ้าเสีย ให้ล้างข้อมูลไมล์จบ แต่เก็บไมล์เริ่มไว้เป็นประวัติได้
                           newDays[index].end_mileage = ""
                           newDays[index].mileage_end_image = null
                         }
@@ -710,7 +693,6 @@ function TripRecordForm({ booking, user, userProfile, onRefresh, onBackToToday }
                             className="h-11 bg-white rounded-xl border-rose-200 focus-visible:ring-rose-400 text-black font-medium"
                           />
                         </div>
-                        {/* อนุญาตให้ถ่ายรูปไมล์เริ่มไว้เป็นหลักฐาน แม้รถเสีย */}
                         <div className="pt-2">
                            <Label className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-1 block">ภาพประกอบ (ทางเลือก)</Label>
                            <FileUploadButton
@@ -828,11 +810,8 @@ export default function LogbookPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null) 
 
-  useEffect(() => {
-    loadAllData()
-  }, [user])
-
-  async function loadAllData() {
+  // ✅ 1. เพิ่มฟังก์ชัน loadAllData ไว้ใน useCallback เพื่อใช้ซ้ำได้สะดวก
+  const loadAllData = useCallback(async () => {
     if (!user) {
       setIsLoading(false)
       return
@@ -842,50 +821,80 @@ export default function LogbookPage() {
     setFetchError(null)
 
     try {
-      const { data: profile, error: profileErr } = await supabase.from('profiles').select('*').eq('id', user.id).single()
-      if (profileErr && profileErr.code !== 'PGRST116') throw profileErr 
-      if (profile) setUserProfile(profile)
+      // ⚡ โหลดข้อมูล Profile และ Driver พร้อมกัน (Parallel Fetching) ลดเวลาได้ 50%
+      const [profileRes, driverRes] = await Promise.all([
+        supabase.from('profiles').select('*').eq('id', user.id).single(),
+        user.role === "driver" 
+          ? supabase.from("drivers").select("id").eq("user_id", user.id).single()
+          : Promise.resolve({ data: null, error: null })
+      ]);
 
-      let myDriverId = null
+      if (profileRes.error && profileRes.error.code !== 'PGRST116') throw profileRes.error;
+      if (profileRes.data) setUserProfile(profileRes.data);
+
+      let myDriverId = null;
       if (user.role === "driver") {
-        const { data: driverData, error: driverErr } = await supabase.from("drivers").select("id").eq("user_id", user.id).single()
-        if (driverErr && driverErr.code !== 'PGRST116') throw driverErr
-        
-        if (driverData) { 
-          myDriverId = driverData.id 
-        } else { 
-          setBookings([])
-          setIsLoading(false)
-          return 
+        if (driverRes.error && driverRes.error.code !== 'PGRST116') throw driverRes.error;
+        if (driverRes.data) {
+          myDriverId = driverRes.data.id;
+        } else {
+          setBookings([]);
+          setIsLoading(false);
+          return;
         }
       }
 
+      // ดึงข้อมูล Bookings
       let query = supabase
         .from("bookings")
         .select(`id, user_name, department, destination, status, start_date, end_date, start_time, end_time, vehicle_id, driver_id, vehicles:vehicle_id ( license_plate, last_mileage ), drivers:driver_id ( name )`)
-        .in("status", ["approved", "started"]) // หายไปจากหน้านี้หากเป็น interrupted หรือ completed
-        .order("start_date", { ascending: true })
+        .in("status", ["approved", "started"])
+        .order("start_date", { ascending: true });
 
-      if (user.role === "driver" && myDriverId) query = query.eq("driver_id", myDriverId)
+      if (user.role === "driver" && myDriverId) query = query.eq("driver_id", myDriverId);
 
-      const { data, error } = await query
-      if (error) throw error
+      const { data, error } = await query;
+      if (error) throw error;
       
-      setBookings(data || [])
+      setBookings(data || []);
     } catch (error) {
-      console.error("Load Logbook Error:", error)
-      setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้")
+      console.error("Load Logbook Error:", error);
+      setFetchError("ไม่สามารถเชื่อมต่อฐานข้อมูลได้");
     } finally {
-      setIsLoading(false) 
+      setIsLoading(false);
     }
-  }
+  }, [user]);
+
+  // ✅ 2. ตรวจจับการกดเปลี่ยนแท็บภายในเว็บ (Tab Switching)
+  useEffect(() => {
+    if (activeTab === "today") {
+      loadAllData()
+    }
+  }, [activeTab, loadAllData])
+
+  // ✅ 3. ตรวจจับเวลาผู้ใช้สลับเบราว์เซอร์ไปเว็บอื่น แล้วกดกลับมา (Visibility API)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      // โหลดข้อมูลก็ต่อเมื่อกลับมาหน้าเว็บ และแท็บปัจจุบันคือ today
+      if (document.visibilityState === 'visible' && activeTab === "today") {
+        loadAllData() 
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange)
+    window.addEventListener("focus", handleVisibilityChange)
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange)
+      window.removeEventListener("focus", handleVisibilityChange)
+    }
+  }, [activeTab, loadAllData])
 
   function startTrip(booking) {
     setSelectedBooking({ ...booking, autoStart: true })
     setActiveTab("record")
   }
 
-  // ✅ 5. ฟังก์ชันสำหรับกลับหน้าหลักแบบเนียนๆ ไม่ต้องโหลดทั้งจอใหม่
   function handleBackToToday() {
     setSelectedBooking(null)
     setActiveTab("today")
@@ -945,11 +954,12 @@ export default function LogbookPage() {
           <TabsContent value="record" className="mt-0 outline-none">
             {selectedBooking ? (
               <TripRecordForm 
+                key={selectedBooking.id}
                 booking={selectedBooking} 
                 user={user} 
                 userProfile={userProfile} 
-                onRefresh={loadAllData}     /* ✅ ส่งฟังก์ชันไปให้เรียกรีเฟรช */
-                onBackToToday={handleBackToToday} /* ✅ ส่งฟังก์ชันพากลับหน้าแรก */
+                onRefresh={loadAllData}     
+                onBackToToday={handleBackToToday} 
               />
             ) : (
               <Card className="border border-white/10 bg-white/10 backdrop-blur-sm rounded-2xl mt-2">

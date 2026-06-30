@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image"
 import { 
   Plus, Search, Pencil, Trash2, Loader2, 
@@ -255,25 +255,57 @@ export default function DriversPage() {
   const [dialogOpen, setDialogOpen] = useState(false)
   const [editDriver, setEditDriver] = useState(null)
 
-  useEffect(() => { if(user) loadAllData() }, [user])
-
-  async function loadAllData() {
+  // ✅ 1. ห่อฟังก์ชันด้วย useCallback และปรับให้โหลดข้อมูลเสถียรขึ้น
+  const loadAllData = useCallback(async () => {
+    if (!user) return;
     setLoading(true);
     try {
       const promises = [
         supabase.from("drivers").select("*").order('created_at', { ascending: false }),
-        supabase.from("profiles").select("id, full_name, email")
+        supabase.from("profiles").select("id, full_name, email"),
+        // ดึง Profile ของตัวเองเสมอ เพื่อให้อัปเดตข้อมูลล่าสุดตลอด
+        supabase.from('profiles').select('*').eq('id', user.id).single() 
       ];
-      if (user?.id && !currentUserProfile) {
-        promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
-      }
+      
       const results = await Promise.all(promises);
+      
       if (results[0].data) setDrivers(results[0].data);
       if (results[1].data) setUsers(results[1].data);
-      if (results[2]?.data) setCurrentUserProfile(results[2].data);
-    } catch (error) { console.error("Error loading data:", error); }
-    finally { setLoading(false); }
-  }
+      if (results[2].data) setCurrentUserProfile(results[2].data);
+      
+    } catch (error) { 
+      // ✅ 2. ป้องกันหน้าจอแดงจาก React Strict Mode ขโมย Lock
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
+      console.error("Error loading data:", error); 
+    } finally { 
+      setLoading(false); 
+    }
+  }, [user]);
+
+  // ✅ 3. โหลดตอนเปิดหน้าเว็บ + รีเฟรชข้อมูลเมื่อสลับแท็บเบราว์เซอร์
+  useEffect(() => { 
+    if (!user) return;
+    
+    loadAllData();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+    };
+  }, [user, loadAllData]);
+
+  // ฟังก์ชัน async function saveDriver(data) { ... จะอยู่ต่อจากบรรทัดนี้ลงไป
 
   async function saveDriver(data) {
     if (editDriver) {

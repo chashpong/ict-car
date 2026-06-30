@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import Image from "next/image" 
 import { 
   Car, Search, Eye, CalendarIcon, Clock, Trash2, 
@@ -604,7 +604,7 @@ function BookingDetailDialog({ booking, onClose }) {
   )
 }
 
-// --- 5. หน้าหลัก (BookingsPage) ---
+// ================= 5. หน้าหลัก (BookingsPage) =================
 export default function BookingsPage() {
   const { user } = useAuth(); 
   const [userProfile, setUserProfile] = useState(null) 
@@ -619,21 +619,17 @@ export default function BookingsPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [fetchError, setFetchError] = useState(null)
   const [viewBooking, setViewBooking] = useState(null)
-  // ✅ state ใหม่: เก็บข้อมูลคำขอที่กำลังจะดูรายละเอียด
   const [detailBooking, setDetailBooking] = useState(null)
 
-  useEffect(() => { loadData() }, [user]) 
-
-  async function loadData() {
-    if (!user) {
-      return; 
-    }
+  // ✅ 1. ห่อฟังก์ชัน loadData ด้วย useCallback เพื่อให้ใช้งานซ้ำได้อย่างปลอดภัย
+  const loadData = useCallback(async () => {
+    if (!user) return; 
 
     setIsLoading(true);
     setFetchError(null);
 
     try {
-      await supabase.auth.getSession();
+      // ❌ ลบบรรทัด await supabase.auth.getSession(); ออกแล้ว เพื่อไม่ให้ไปชนกับ Lock
 
       let query = supabase
         .from("bookings")
@@ -650,7 +646,8 @@ export default function BookingsPage() {
         supabase.from("vehicles").select("id, license_plate, brand, model, status, seats")
       ];
       
-      if (user?.id && !userProfile) {
+      // ✅ แก้ไขเงื่อนไขเช็ค Profile ให้รัดกุมขึ้น
+      if (user?.id) {
         promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
       }
 
@@ -664,12 +661,41 @@ export default function BookingsPage() {
       if (results[2] && results[2].data) setUserProfile(results[2].data);
       
     } catch (error) {
+      // ✅ 2. เพิ่มการดักจับ Error ที่เกิดจาก React Strict Mode (ไม่ให้ไปแสดงหน้าจอแดง)
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        console.warn("ข้าม Error การดึงข้อมูลจาก Strict Mode:", error.message);
+        return; 
+      }
+
       console.error("Load Data Error:", error);
       setFetchError("เกิดข้อผิดพลาดในการดึงข้อมูล กรุณาตรวจสอบการเชื่อมต่อ");
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [user]);
+
+  // ✅ 2. เพิ่มระบบ "อัปเดตข้อมูลอัตโนมัติ" เมื่อผู้ใช้สลับหน้าต่างเบราว์เซอร์กลับมา
+  useEffect(() => {
+    loadData(); // โหลดครั้งแรกตอนเปิดหน้าเว็บ
+
+    const handleVisibilityChange = () => {
+      // ถ้ากลับมาหน้าเว็บ ให้แอบดึงข้อมูลใหม่เบื้องหลัง
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+    };
+  }, [loadData]);
+
+
+  // ... (ฟังก์ชันอื่นๆ เช่น handleOpenCreate, handleSave, handleDelete ปล่อยไว้เหมือนเดิมได้เลยครับ)
 
   const handleOpenCreate = () => {
     setEditingBooking(null);

@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Checkbox } from "@/components/ui/checkbox"
 import { useAuth } from "@/lib/auth-context"
 import Swal from 'sweetalert2'
 
@@ -16,7 +15,7 @@ export function LoginForm() {
   const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
-  const [remember, setRemember] = useState(false)
+  // const [remember, setRemember] = useState(false) // ❌ ปิดไว้เพราะ Supabase จำให้อัตโนมัติอยู่แล้ว
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [isSubmitting, setIsSubmitting] = useState(false)
@@ -37,7 +36,6 @@ export function LoginForm() {
 
     setIsSubmitting(true)
 
-    // บล็อคหน้าจอด้วย SweetAlert กันผู้ใช้กดปุ่มซ้ำ
     Swal.fire({
       title: 'กำลังเข้าสู่ระบบ...',
       text: 'กรุณารอสักครู่',
@@ -55,24 +53,25 @@ export function LoginForm() {
       setError(result.error || "อีเมลหรือรหัสผ่านไม่ถูกต้อง")
       setIsSubmitting(false) 
     } else {
-      // ✅ 1. ปิดหน้าจอโหลด
       Swal.close() 
       
-      // ✅ 2. ดึงตำแหน่ง (Role) ของคนที่เพิ่งล็อกอินเข้ามา
       const userRole = result.user?.role || "user"
       
-      // ✅ 3. เช็กสิทธิ์แล้วพาวาร์ปไปหน้าที่ถูกต้อง (ทำ Hard Navigate แก้ปัญหาค้าง)
+      // ✅ เปลี่ยนมาใช้ router.push เพื่อให้เปลี่ยนหน้าลื่นไหล ไม่กระพริบขาว
       if (userRole === "admin") {
-        window.location.href = "/" 
+        router.push("/") 
       } else if (userRole === "approver") {
-        window.location.href = "/approvals"
+        router.push("/approvals")
       } else if (userRole === "reviewer") {
-        window.location.href = "/reviewer"
+        router.push("/reviewer")
       } else if (userRole === "driver") {
-        window.location.href = "/logbook"
+        router.push("/logbook")
       } else {
-        window.location.href = "/bookings" // สำหรับ user ทั่วไป
+        router.push("/bookings") 
       }
+      
+      // ✅ สั่งให้ Next.js รีเฟรชข้อมูลเบื้องหลัง
+      router.refresh(); 
     }
   }
 
@@ -81,7 +80,6 @@ export function LoginForm() {
   }
 
   return (
-    // ✅ เปลี่ยนข้อความหลักเป็นสีขาว (text-white)
     <div className="flex w-full flex-col font-sarabun text-white animate-in fade-in zoom-in-95 duration-500">
       <div className="text-center md:text-left mb-6">
         <h2 className="text-3xl font-extrabold tracking-tight">เข้าสู่ระบบ</h2>
@@ -96,14 +94,13 @@ export function LoginForm() {
         )}
 
         <div className="space-y-2">
-          <Label htmlFor="email" className="font-bold text-white text-base">อีเมล / ชื่อผู้ใช้</Label>
+          <Label htmlFor="email" className="font-bold text-white text-base">อีเมล</Label>
           <Input
             id="email"
-            type="text" // เปลี่ยนเป็น text เผื่อผู้ใช้กรอกเป็นชื่อ
-            placeholder="your-email@example.com หรือ Username"
+            type="email" // ✅ แนะนำให้ล็อกเป็น email เพื่อกันผู้ใช้พิมพ์ผิดรูปแบบ
+            placeholder="your-email@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            // ✅ ปรับกล่อง Input ให้เป็นกระจกฝ้า ขอบขาวโปร่งแสง
             className="bg-white/10 focus:bg-white/20 transition-all h-12 rounded-xl text-white placeholder:text-slate-400 border-white/20 focus:ring-blue-400 focus:border-blue-400"
             disabled={isSubmitting} 
           />
@@ -132,20 +129,7 @@ export function LoginForm() {
           </div>
         </div>
 
-        <div className="flex items-center justify-between pt-1">
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="remember"
-              checked={remember}
-              onCheckedChange={(v) => setRemember(v === true)}
-              disabled={isSubmitting}
-              className="border-slate-400 data-[state=checked]:bg-blue-500 data-[state=checked]:border-blue-500"
-            />
-            <Label htmlFor="remember" className="text-sm font-bold text-slate-200 cursor-pointer">
-              จดจำการเข้าสู่ระบบ
-            </Label>
-          </div>
-          {/* ✅ ลิงก์ลืมรหัสผ่านเป็นสีฟ้าสว่าง */}
+        <div className="flex items-center justify-end pt-1">
           <button
             type="button"
             onClick={() => setShowForgot(true)}
@@ -157,7 +141,6 @@ export function LoginForm() {
         </div>
 
         <div className="space-y-5 pt-4">
-          {/* ✅ ปุ่มล็อกอินสีน้ำเงินเด่นๆ */}
           <Button 
             type="submit" 
             className="w-full bg-blue-600 hover:bg-blue-500 text-white shadow-lg shadow-blue-900/20 h-12 text-base font-bold rounded-xl transition-all hover:scale-[1.02]" 
@@ -174,7 +157,6 @@ export function LoginForm() {
           <div className="text-center pt-2 border-t border-white/10 mt-4">
             <p className="text-sm font-medium text-slate-300 mt-4">
               ยังไม่มีบัญชีผู้ใช้?{" "}
-              {/* ✅ ลิงก์สมัครสมาชิกสีฟ้าสว่าง */}
               <button
                 type="button"
                 onClick={() => router.push("/register")}
@@ -190,6 +172,8 @@ export function LoginForm() {
     </div>
   )
 }
+
+// ... ส่วน ForgotPasswordView ด้านล่างคงไว้เหมือนเดิมได้เลยครับ
 
 function ForgotPasswordView({ onBack }) {
   const [email, setEmail] = useState("")

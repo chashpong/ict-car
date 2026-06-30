@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Image from "next/image" 
 import { useAuth } from "@/lib/auth-context" 
 import { cn } from "@/lib/utils" 
@@ -115,16 +115,13 @@ export default function HistoryPage() {
   const [historyBookings, setHistoryBookings] = useState([])
   const [selectedBooking, setSelectedBooking] = useState(null)
   const [isLoading, setIsLoading] = useState(true)
-  const [fetchError, setFetchError] = useState(null) // ✅ 1. เพิ่ม State ดักจับ Error
+  const [fetchError, setFetchError] = useState(null) 
 
-  useEffect(() => {
-    if (user) loadAllData();
-  }, [user])
-
-  async function loadAllData() {
-    if (!user) return; // ✅ ป้องกันโหลดข้อมูลตอนที่ user ยังไม่มี
+  // ✅ 1. ห่อฟังก์ชันด้วย useCallback
+  const loadAllData = useCallback(async () => {
+    if (!user) return; 
     setIsLoading(true)
-    setFetchError(null) // ✅ เคลียร์ Error ก่อนโหลดใหม่
+    setFetchError(null) 
     try {
       const promises = [
         supabase.from("bookings").select("*").in("status", ["approved", "completed", "started"]).order("created_at", { ascending: false }),
@@ -132,7 +129,6 @@ export default function HistoryPage() {
         supabase.from("drivers").select("id, name")
       ];
 
-      // ดึง Profile ด้วยถ้ายังไม่มี
       if (user?.id && !userProfile) {
         promises.push(supabase.from('profiles').select('*').eq('id', user.id).single());
       }
@@ -144,7 +140,6 @@ export default function HistoryPage() {
       const dRes = results[2];
       const profileRes = promises.length > 3 ? results[3] : null;
 
-      // ✅ 2. ดัก Error ถ้าฐานข้อมูลล่มหรือถูกบล็อก
       if (bRes.error) throw bRes.error;
       if (vRes.error) throw vRes.error;
       if (dRes.error) throw dRes.error;
@@ -197,14 +192,39 @@ export default function HistoryPage() {
 
       setHistoryBookings(enrichedData);
     } catch (err) {
+      // ✅ 2. ดัก Error จอแดง ถ้าเกิดจาก Strict Mode (Lock steal)
+      if (err.name === 'AbortError' || err.message?.includes('Lock') || err.message?.includes('steal')) {
+        return; 
+      }
       console.error("❌ Error fetching history:", err);
-      // ✅ 3. เซ็ตค่า Error เพื่อนำไปโชว์ใน UI
       setFetchError("ไม่สามารถดึงข้อมูลประวัติการอนุมัติได้ โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
     } finally {
       setIsLoading(false)
     }
-  }
+  }, [user, userProfile]);
 
+  // ✅ 3. รวมการเปิดหน้าครั้งแรก + ดักจับการสลับแท็บเบราว์เซอร์ ไว้ด้วยกัน
+  useEffect(() => {
+    if (!user) return;
+    
+    loadAllData();
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadAllData();
+      }
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+    };
+  }, [user, loadAllData]);
+
+  // ส่วน return (...) ด้านล่างปล่อยไว้เหมือนเดิมครับ
   return (
     <div className="font-sarabun text-black min-h-screen relative bg-slate-900">
       

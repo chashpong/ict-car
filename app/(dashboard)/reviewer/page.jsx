@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useCallback } from "react"
 import Image from "next/image"
 import {
   Search,
@@ -384,26 +384,13 @@ export default function ReviewerBookingsPage() {
   const [reviewModalOpen, setReviewModalOpen] = useState(false);
   const [selectedBooking, setSelectedBooking] = useState(null);
 
-  useEffect(() => {
-    if (!user) return;
-    loadData();
-
-    const channel = supabase
-      .channel('reviewer-bookings')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
-         loadData(); 
-      })
-      .subscribe();
-
-    return () => { supabase.removeChannel(channel); };
-  }, [user]);
-
-  async function loadData() {
+  // ✅ 1. ห่อฟังก์ชันโหลดข้อมูลด้วย useCallback
+  const loadData = useCallback(async () => {
     if (!user) return;
     setIsLoading(true);
     try {
-      await supabase.auth.getSession();
-
+      // ❌ ลบ getSession ออกเพื่อป้องกัน Lock Error
+      
       const promises = [
         supabase.from("bookings").select("*, vehicles(license_plate)").order("created_at", { ascending: false }),
         supabase.from("vehicles").select("*"), 
@@ -423,12 +410,49 @@ export default function ReviewerBookingsPage() {
       if (pRes.data) setUserProfile(pRes.data);
 
     } catch (error) {
+      // ✅ 2. ข้าม Error แจ้งเตือนสีแดงจาก React Strict Mode
+      if (error.name === 'AbortError' || error.message?.includes('Lock') || error.message?.includes('steal')) {
+        return; 
+      }
       console.error("Load Error:", error);
       Swal.fire({ icon: 'error', title: 'ดึงข้อมูลไม่สำเร็จ', text: error.message });
     } finally {
       setIsLoading(false);
     }
-  }
+  }, [user]);
+
+  // ✅ 3. รวม Real-time และ Visibility API ไว้ด้วยกัน
+  useEffect(() => {
+    if (!user) return;
+    
+    loadData(); // โหลดครั้งแรกตอนเปิดหน้า
+
+    // -- จัดการเรื่องสลับแท็บเบราว์เซอร์ --
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        loadData();
+      }
+    };
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("focus", handleVisibilityChange);
+
+    // -- จัดการเรื่อง Real-time Database --
+    const channel = supabase
+      .channel('reviewer-bookings')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'bookings' }, () => {
+         loadData(); 
+      })
+      .subscribe();
+
+    // Cleanup ถอดการติดตามทั้งหมดเมื่อปิดหน้านี้
+    return () => { 
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("focus", handleVisibilityChange);
+      supabase.removeChannel(channel); 
+    };
+  }, [user, loadData]);
+
+  // ฟังก์ชัน handleOpenReview อยู่ต่อจากตรงนี้...
 
   const handleOpenReview = (booking) => {
     setSelectedBooking(booking);
